@@ -4,6 +4,7 @@ import threading
 import requests
 from bs4 import BeautifulSoup
 import time
+import os
 
 LOGIN_URL = "https://www.ybsnow.com/login.php"
 ORDERS_URL = "https://www.ybsnow.com/manage.html"
@@ -18,6 +19,8 @@ class OrderScraperApp:
 
         self.username_var = ctk.StringVar()
         self.password_var = ctk.StringVar()
+        self.login_url_var = ctk.StringVar(value=LOGIN_URL)
+        self.orders_url_var = ctk.StringVar(value=ORDERS_URL)
 
         # Tabs
         self.tab_control = ctk.CTkTabview(root)
@@ -30,7 +33,11 @@ class OrderScraperApp:
         ctk.CTkEntry(self.settings_tab, textvariable=self.username_var).grid(row=0, column=1, padx=5, pady=5)
         ctk.CTkLabel(self.settings_tab, text="Password:").grid(row=1, column=0, padx=5, pady=5)
         ctk.CTkEntry(self.settings_tab, textvariable=self.password_var, show='*').grid(row=1, column=1, padx=5, pady=5)
-        ctk.CTkButton(self.settings_tab, text="Login", command=self.login).grid(row=2, column=0, columnspan=2, pady=10)
+        ctk.CTkLabel(self.settings_tab, text="Login URL:").grid(row=2, column=0, padx=5, pady=5)
+        ctk.CTkEntry(self.settings_tab, textvariable=self.login_url_var).grid(row=2, column=1, padx=5, pady=5)
+        ctk.CTkLabel(self.settings_tab, text="Orders URL:").grid(row=3, column=0, padx=5, pady=5)
+        ctk.CTkEntry(self.settings_tab, textvariable=self.orders_url_var).grid(row=3, column=1, padx=5, pady=5)
+        ctk.CTkButton(self.settings_tab, text="Login", command=self.login).grid(row=4, column=0, columnspan=2, pady=10)
 
         # Orders Tab
         self.table_frame = ctk.CTkFrame(self.orders_tab)
@@ -61,8 +68,10 @@ class OrderScraperApp:
         username = self.username_var.get()
         password = self.password_var.get()
         data = {'username': username, 'password': password}
-        resp = self.session.post(LOGIN_URL, data=data)
-        if "logout" in resp.text.lower() or "manage.html" in resp.text.lower():
+        login_url = self.login_url_var.get() or LOGIN_URL
+        resp = self.session.post(login_url, data=data)
+        orders_page = os.path.basename(self.orders_url_var.get() or ORDERS_URL).lower()
+        if "logout" in resp.text.lower() or orders_page in resp.text.lower():
             self.logged_in = True
             messagebox.showinfo("Login", "Login successful!")
         else:
@@ -74,7 +83,8 @@ class OrderScraperApp:
         if not self.logged_in:
             messagebox.showerror("Error", "Not logged in!")
             return
-        resp = self.session.get(ORDERS_URL)
+        orders_url = self.orders_url_var.get() or ORDERS_URL
+        resp = self.session.get(orders_url)
         soup = BeautifulSoup(resp.text, 'html.parser')
         tbody = soup.find('tbody', id='table')
         self.orders_tree.delete(*self.orders_tree.get_children())
