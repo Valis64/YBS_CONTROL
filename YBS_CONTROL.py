@@ -49,6 +49,8 @@ class OrderScraperApp:
         self.tab_control = ctk.CTkTabview(root)
         self.settings_tab = self.tab_control.add("Settings")
         self.orders_tab = self.tab_control.add("Orders")
+        # new tab for simple database access
+        self.database_tab = self.tab_control.add("Database")
         self.tab_control.pack(expand=1, fill="both")
 
         # Settings Tab
@@ -64,11 +66,19 @@ class OrderScraperApp:
 
         # Orders Tab
         self.search_var = ctk.StringVar()
+        self.start_date_var = ctk.StringVar()
+        self.end_date_var = ctk.StringVar()
         search_frame = ctk.CTkFrame(self.orders_tab)
         search_frame.pack(fill="x", padx=10, pady=5)
         ctk.CTkLabel(search_frame, text="Order Search:").pack(side="left", padx=5)
         ctk.CTkEntry(search_frame, textvariable=self.search_var, width=120).pack(side="left", padx=5)
         ctk.CTkButton(search_frame, text="Search", command=self.search_orders).pack(side="left", padx=5)
+
+        # date range controls
+        ctk.CTkLabel(search_frame, text="Start (YYYY-MM-DD):").pack(side="left", padx=5)
+        ctk.CTkEntry(search_frame, textvariable=self.start_date_var, width=100).pack(side="left", padx=5)
+        ctk.CTkLabel(search_frame, text="End (YYYY-MM-DD):").pack(side="left", padx=5)
+        ctk.CTkEntry(search_frame, textvariable=self.end_date_var, width=100).pack(side="left", padx=5)
 
         self.table_frame = ctk.CTkFrame(self.orders_tab)
         self.table_frame.pack(expand=1, fill="both", padx=10, pady=10)
@@ -114,10 +124,26 @@ class OrderScraperApp:
         rscroll.pack(side="right", fill="y")
 
         ctk.CTkButton(self.orders_tab, text="Export Report", command=self.export_selected).pack(pady=5)
+        ctk.CTkButton(self.orders_tab, text="Export Date Range", command=self.export_date_range).pack(pady=5)
         ctk.CTkButton(self.orders_tab, text="Refresh Orders", command=self.get_orders).pack(pady=5)
 
         self.orders_tree.bind("<<TreeviewSelect>>", self.show_report)
         self.orders_tree.bind("<Double-1>", self.export_report)
+
+        # Database Tab view
+        self.db_tree = ttk.Treeview(
+            self.database_tab,
+            columns=("Order", "Company"),
+            show="headings",
+        )
+        self.db_tree.heading("Order", text="Order")
+        self.db_tree.heading("Company", text="Company")
+        self.db_tree.pack(expand=1, fill="both", padx=10, pady=10)
+        ctk.CTkButton(
+            self.database_tab, text="Refresh", command=self.refresh_database_tab
+        ).pack(pady=5)
+
+        self.refresh_database_tab()
 
         # Relogin timer
         self.relogin_thread = threading.Thread(target=self.relogin_loop, daemon=True)
@@ -191,6 +217,7 @@ class OrderScraperApp:
                     self.orders_tree.insert('', 'end', values=row)
                 except Exception as e:
                     print("Error parsing row:", e)
+        self.refresh_database_tab()
 
     def log_order(self, order_number, company, steps):
         cur = self.db.cursor()
@@ -233,12 +260,19 @@ class OrderScraperApp:
             steps.append((step, ts))
         return steps
 
-    def load_lead_times(self, order_number):
+    def load_lead_times(self, order_number, start_date=None, end_date=None):
+        """Load precomputed lead times optionally filtered by date range."""
         cur = self.db.cursor()
-        cur.execute(
-            "SELECT workstation, start, end, hours FROM lead_times WHERE order_number=? ORDER BY start",
-            (order_number,),
-        )
+        query = "SELECT workstation, start, end, hours FROM lead_times WHERE order_number=?"
+        params = [order_number]
+        if start_date:
+            query += " AND start >= ?"
+            params.append(start_date.isoformat(sep=" "))
+        if end_date:
+            query += " AND end <= ?"
+            params.append(end_date.isoformat(sep=" "))
+        query += " ORDER BY start"
+        cur.execute(query, params)
         rows = [
             {
                 "step": r[0],
@@ -250,15 +284,32 @@ class OrderScraperApp:
         ]
         return rows
 
+    def get_date_range(self):
+        """Return (start, end) datetimes from the entry fields or None."""
+        start = None
+        end = None
+        if self.start_date_var.get().strip():
+            try:
+                start = datetime.strptime(self.start_date_var.get().strip(), "%Y-%m-%d")
+            except ValueError:
+                messagebox.showerror("Date", "Invalid start date format")
+        if self.end_date_var.get().strip():
+            try:
+                end = datetime.strptime(self.end_date_var.get().strip(), "%Y-%m-%d")
+            except ValueError:
+                messagebox.showerror("Date", "Invalid end date format")
+        return start, end
+
     def show_report(self, event=None):
         selected = self.orders_tree.focus()
         if not selected:
             return
         order_number = self.orders_tree.item(selected, "values")[0]
-        rows = self.load_lead_times(order_number)
+        start, end = self.get_date_range()
+        rows = self.load_lead_times(order_number, start, end)
         if not rows:
             steps = self.load_steps(order_number)
-            rows = compute_lead_times({order_number: steps}).get(order_number, [])
+            rows = compute_lead_times({order_number: steps}, start, end).get(order_number, [])
             # store for future
             cur = self.db.cursor()
             for item in rows:
@@ -304,15 +355,62 @@ class OrderScraperApp:
         if not selected:
             return
         order_number = self.orders_tree.item(selected, "values")[0]
-        rows = self.load_lead_times(order_number)
+        start, end = self.get_date_range()
+        rows = self.load_lead_times(order_number, start, end)
         if not rows:
             steps = self.load_steps(order_number)
-            rows = compute_lead_times({order_number: steps}).get(order_number, [])
+            rows = compute_lead_times({order_number: steps}, start, end).get(order_number, [])
         results = {order_number: rows}
         safe_order = re.sub(r'[^A-Za-z0-9_-]', '', order_number)
-        path = f"lead_time_{safe_order}.csv"
+        suffix = ""
+        if start or end:
+            s = start.strftime("%Y%m%d") if start else "begin"
+            e = end.strftime("%Y%m%d") if end else "now"
+            suffix = f"_{s}_{e}"
+        path = f"lead_time_{safe_order}{suffix}.csv"
         write_report(results, path)
         messagebox.showinfo("Export", f"Report written to {path}")
+
+    def export_date_range(self):
+        """Export a report for all jobs within the provided date range."""
+        start, end = self.get_date_range()
+        if not start and not end:
+            messagebox.showerror("Export", "Enter a start or end date")
+            return
+        cur = self.db.cursor()
+        query = "SELECT DISTINCT order_number FROM lead_times WHERE 1=1"
+        params = []
+        if start:
+            query += " AND start >= ?"
+            params.append(start.isoformat(sep=" "))
+        if end:
+            query += " AND end <= ?"
+            params.append(end.isoformat(sep=" "))
+        cur.execute(query, params)
+        orders = [r[0] for r in cur.fetchall()]
+        results = {}
+        for order in orders:
+            rows = self.load_lead_times(order, start, end)
+            if not rows:
+                steps = self.load_steps(order)
+                rows = compute_lead_times({order: steps}, start, end).get(order, [])
+            if rows:
+                results[order] = rows
+        if not results:
+            messagebox.showinfo("Export", "No data for range")
+            return
+        s = start.strftime("%Y%m%d") if start else "begin"
+        e = end.strftime("%Y%m%d") if end else "now"
+        path = f"lead_time_{s}_{e}.csv"
+        write_report(results, path)
+        messagebox.showinfo("Export", f"Report written to {path}")
+
+    def refresh_database_tab(self):
+        """Populate the Database tab with the Orders table contents."""
+        self.db_tree.delete(*self.db_tree.get_children())
+        cur = self.db.cursor()
+        for order, company in cur.execute("SELECT order_number, company FROM orders ORDER BY order_number"):
+            self.db_tree.insert('', 'end', values=(order, company))
 
     def relogin_loop(self):
         while True:

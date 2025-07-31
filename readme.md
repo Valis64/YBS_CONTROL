@@ -2,7 +2,7 @@ YBS Order Scraper
 A simple Python GUI tool to log in to ybsnow.com, persist the session, and scrape/display order information from the orders table. The session automatically relogs every 2 hours to ensure your session stays fresh.
 
 Features
-Easy-to-use CustomTkinter GUI with Settings and Orders tabs in a dark teal theme
+Easy-to-use CustomTkinter GUI with Settings, Orders and Database tabs
 
 Secure login (username & password, stored only for session)
 
@@ -89,6 +89,11 @@ python lead_time_report.py data.csv --start 2024-01-01 --end 2024-01-31 --output
 ```
 
 The script removes weekends from the calculation and outputs a `report.csv` file summarizing hours in each queue.
+
+Date range filtering is available directly in the GUI. Enter a start and/or end
+date on the Orders tab (in `YYYY-MM-DD` format) and use **Export Date Range** to
+save a report for all jobs in that window. Selecting an individual order and
+clicking **Export Report** will also honour the entered dates.
 
 You can also parse a saved `manage.html` file with `manage_html_report.py`:
 
