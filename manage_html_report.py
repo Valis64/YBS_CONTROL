@@ -123,7 +123,10 @@ def main():
     args = parse_args()
     jobs = parse_manage_html(args.html_file)
     start = datetime.strptime(args.start, "%Y-%m-%d") if args.start else None
-    end = datetime.strptime(args.end, "%Y-%m-%d") if args.end else None
+    if args.end:
+        end = datetime.strptime(args.end, "%Y-%m-%d") + timedelta(days=1) - timedelta(microseconds=1)
+    else:
+        end = None
     results = compute_lead_times(jobs, start, end)
     write_report(results, args.output)
     print(f"Report written to {args.output}")

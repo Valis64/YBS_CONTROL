@@ -98,3 +98,7 @@ python manage_html_report.py manage.html --output report.csv \
 ```
 
 This reads the workstation timestamps from the HTML table and produces the same style report.
+
+On the **Orders** tab of the GUI, you can also specify start and end dates using
+the fields above the report table to filter which workstation steps are
+included when viewing or exporting a report.

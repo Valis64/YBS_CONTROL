@@ -1,7 +1,7 @@
 import os
 import tempfile
 import unittest
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from manage_html_report import compute_lead_times, parse_manage_html
 
@@ -57,6 +57,16 @@ class ManageHTMLTests(unittest.TestCase):
         start = datetime(2025, 7, 23)
         results = compute_lead_times(jobs, start_date=start)
         self.assertEqual(len(results["1001"]), 0)
+        os.remove(tmp_path)
+
+    def test_compute_lead_times_end_date_inclusive(self):
+        with tempfile.NamedTemporaryFile("w+", delete=False, suffix=".html") as tmp:
+            tmp.write(SAMPLE_HTML)
+            tmp_path = tmp.name
+        jobs = parse_manage_html(tmp_path)
+        end = datetime(2025, 7, 23) + timedelta(days=1) - timedelta(microseconds=1)
+        results = compute_lead_times(jobs, end_date=end)
+        self.assertEqual(len(results["1001"]), 1)
         os.remove(tmp_path)
 
 

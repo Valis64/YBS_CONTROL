@@ -70,6 +70,17 @@ class OrderScraperApp:
         ctk.CTkEntry(search_frame, textvariable=self.search_var, width=120).pack(side="left", padx=5)
         ctk.CTkButton(search_frame, text="Search", command=self.search_orders).pack(side="left", padx=5)
 
+        # Date range controls
+        self.start_var = ctk.StringVar()
+        self.end_var = ctk.StringVar()
+        date_frame = ctk.CTkFrame(self.orders_tab)
+        date_frame.pack(fill="x", padx=10, pady=5)
+        ctk.CTkLabel(date_frame, text="Start (YYYY-MM-DD):").pack(side="left", padx=5)
+        ctk.CTkEntry(date_frame, textvariable=self.start_var, width=120).pack(side="left", padx=5)
+        ctk.CTkLabel(date_frame, text="End (YYYY-MM-DD):").pack(side="left", padx=5)
+        ctk.CTkEntry(date_frame, textvariable=self.end_var, width=120).pack(side="left", padx=5)
+        ctk.CTkButton(date_frame, text="Apply", command=self.show_report).pack(side="left", padx=5)
+
         self.table_frame = ctk.CTkFrame(self.orders_tab)
         self.table_frame.pack(expand=1, fill="both", padx=10, pady=10)
 
@@ -250,29 +261,29 @@ class OrderScraperApp:
         ]
         return rows
 
+    def get_date_range(self):
+        """Return selected start and end datetimes or ``None``."""
+        start_str = self.start_var.get().strip()
+        end_str = self.end_var.get().strip()
+        start = datetime.strptime(start_str, "%Y-%m-%d") if start_str else None
+        if end_str:
+            end = (
+                datetime.strptime(end_str, "%Y-%m-%d")
+                + timedelta(days=1)
+                - timedelta(microseconds=1)
+            )
+        else:
+            end = None
+        return start, end
+
     def show_report(self, event=None):
         selected = self.orders_tree.focus()
         if not selected:
             return
         order_number = self.orders_tree.item(selected, "values")[0]
-        rows = self.load_lead_times(order_number)
-        if not rows:
-            steps = self.load_steps(order_number)
-            rows = compute_lead_times({order_number: steps}).get(order_number, [])
-            # store for future
-            cur = self.db.cursor()
-            for item in rows:
-                cur.execute(
-                    "INSERT INTO lead_times(order_number, workstation, start, end, hours) VALUES (?, ?, ?, ?, ?)",
-                    (
-                        order_number,
-                        item["step"],
-                        item["start"].isoformat(sep=" "),
-                        item["end"].isoformat(sep=" "),
-                        item["hours"],
-                    ),
-                )
-            self.db.commit()
+        steps = self.load_steps(order_number)
+        start, end = self.get_date_range()
+        rows = compute_lead_times({order_number: steps}, start, end).get(order_number, [])
         self.report_tree.delete(*self.report_tree.get_children())
         total = 0.0
         for item in rows:
@@ -304,10 +315,9 @@ class OrderScraperApp:
         if not selected:
             return
         order_number = self.orders_tree.item(selected, "values")[0]
-        rows = self.load_lead_times(order_number)
-        if not rows:
-            steps = self.load_steps(order_number)
-            rows = compute_lead_times({order_number: steps}).get(order_number, [])
+        steps = self.load_steps(order_number)
+        start, end = self.get_date_range()
+        rows = compute_lead_times({order_number: steps}, start, end).get(order_number, [])
         results = {order_number: rows}
         safe_order = re.sub(r'[^A-Za-z0-9_-]', '', order_number)
         path = f"lead_time_{safe_order}.csv"
