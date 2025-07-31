@@ -93,7 +93,12 @@ The script removes weekends from the calculation and outputs a `report.csv` file
 You can also parse a saved `manage.html` file with `manage_html_report.py`:
 
 ```bash
-python manage_html_report.py manage.html --output report.csv
+python manage_html_report.py manage.html --output report.csv \
+    --start 2024-01-01 --end 2024-01-31
 ```
 
 This reads the workstation timestamps from the HTML table and produces the same style report.
+
+On the **Orders** tab of the GUI, you can also specify start and end dates using
+the fields above the report table to filter which workstation steps are
+included when viewing or exporting a report.
