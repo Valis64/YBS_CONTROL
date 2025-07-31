@@ -4,7 +4,7 @@ A simple Python GUI tool to log in to ybsnow.com, persist the session, and scrap
 Features
 Easy-to-use CustomTkinter GUI with Settings and Orders tabs in a dark teal theme
 
-Secure login (username & password, stored only for session)
+Secure login (email & password, stored only for session)
 
 Retrieves tabular order information from the orders page
 
@@ -13,6 +13,10 @@ Refresh orders with a single click
 Automatic session relogin every 2 hours
 
 Easily extendable for export (CSV, Excel, etc.)
+
+Specify custom Login and Orders URLs (handles .php or .html pages)
+Sends a browser User-Agent header for compatibility
+Default login posts to index.php using email and password fields
 
 Requirements
 Python 3.8+
@@ -40,7 +44,9 @@ Login
 
 Go to the “Settings” tab
 
-Enter your YBS username and password, then click Login
+Enter your YBS email and password.
+Optional: adjust the Login URL or Orders URL if your site uses different
+endpoints, then click Login
 
 View Orders
 
@@ -65,6 +71,7 @@ Error Handling: Modify login or table parsing logic as site changes.
 
 Troubleshooting
 If login fails, double-check your credentials.
+If the request fails immediately, ensure your network or proxy allows access to the site. Connection issues will now appear in the login popup.
 
 If the table isn’t loading, the site structure may have changed (contact the maintainer for updates).
 
