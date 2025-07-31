@@ -41,8 +41,10 @@ class ManageHTMLTests(unittest.TestCase):
             tmp_path = tmp.name
         jobs = parse_manage_html(tmp_path)
         results = compute_lead_times(jobs)
-        hours = results['1001'][0]['hours']
-        self.assertAlmostEqual(hours, 29.0)
+        entry = results['1001'][0]
+        self.assertAlmostEqual(entry['hours'], 29.0)
+        self.assertIsInstance(entry['start'], datetime)
+        self.assertIsInstance(entry['end'], datetime)
         os.remove(tmp_path)
 
 if __name__ == '__main__':

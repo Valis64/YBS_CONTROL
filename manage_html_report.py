@@ -61,6 +61,7 @@ def parse_manage_html(path):
 
 
 def compute_lead_times(jobs):
+    """Return hours spent in each workstation including timestamps."""
     results = defaultdict(list)
     for job, steps in jobs.items():
         for i in range(len(steps) - 1):
@@ -69,18 +70,34 @@ def compute_lead_times(jobs):
             if start and end:
                 delta = business_hours_delta(start, end)
                 hours = delta.total_seconds() / 3600.0
-                results[job].append({"step": next_name, "hours": hours})
+                results[job].append(
+                    {
+                        "step": next_name,
+                        "hours": hours,
+                        "start": start,
+                        "end": end,
+                    }
+                )
     return results
 
 
 def write_report(results, path):
+    """Write lead time data to ``path`` including timestamps."""
     with open(path, "w", newline="") as f:
-        fieldnames = ["job_number", "step", "hours_in_queue"]
+        fieldnames = ["job_number", "workstation", "hours_in_queue", "start", "end"]
         writer = csv.DictWriter(f, fieldnames=fieldnames)
         writer.writeheader()
         for job, steps in results.items():
             for step in steps:
-                writer.writerow({"job_number": job, "step": step["step"], "hours_in_queue": f"{step['hours']:.2f}"})
+                writer.writerow(
+                    {
+                        "job_number": job,
+                        "workstation": step["step"],
+                        "hours_in_queue": f"{step['hours']:.2f}",
+                        "start": step["start"].isoformat(sep=" "),
+                        "end": step["end"].isoformat(sep=" "),
+                    }
+                )
 
 
 def main():
