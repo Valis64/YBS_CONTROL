@@ -140,6 +140,10 @@ class OrderScraperApp:
         if "logout" in resp.text.lower() or orders_page in resp.text.lower():
             self.logged_in = True
             messagebox.showinfo("Login", "Login successful!")
+            try:
+                self.tab_control.set("Orders")
+            except Exception:
+                pass
         else:
             self.logged_in = False
             messagebox.showerror("Login", "Login failed.")
@@ -161,6 +165,7 @@ class OrderScraperApp:
                 try:
                     order_text = tds[0].get_text(strip=True)
                     order_num = order_text.split()[-1]
+                    order_num = re.sub(r'[^A-Za-z0-9_-]', '', order_num)
                     company = tds[1].get_text(strip=True)
                     status = tds[3].get_text(strip=True)
                     priority = tds[5].find('input').get('value') if tds[5].find('input') else ''
@@ -304,7 +309,8 @@ class OrderScraperApp:
             steps = self.load_steps(order_number)
             rows = compute_lead_times({order_number: steps}).get(order_number, [])
         results = {order_number: rows}
-        path = f"lead_time_{order_number}.csv"
+        safe_order = re.sub(r'[^A-Za-z0-9_-]', '', order_number)
+        path = f"lead_time_{safe_order}.csv"
         write_report(results, path)
         messagebox.showinfo("Export", f"Report written to {path}")
 
