@@ -6,7 +6,11 @@ from bs4 import BeautifulSoup
 import time
 import os
 
-LOGIN_URL = "https://www.ybsnow.com/login.php"
+# Default login endpoint on ybsnow.com. The site currently posts the login form
+# to ``index.php`` with fields named "email", "password" and a hidden
+# ``action=signin`` value.  Keep this configurable so the user can override it
+# if the endpoint changes again in the future.
+LOGIN_URL = "https://www.ybsnow.com/index.php"
 ORDERS_URL = "https://www.ybsnow.com/manage.html"
 
 class OrderScraperApp:
@@ -67,7 +71,14 @@ class OrderScraperApp:
     def login(self):
         username = self.username_var.get()
         password = self.password_var.get()
-        data = {'username': username, 'password': password}
+        # The login form uses "email" and a hidden "action" field set to
+        # "signin".  Submit those values so the session authenticates
+        # correctly.
+        data = {
+            'email': username,
+            'password': password,
+            'action': 'signin',
+        }
         login_url = self.login_url_var.get() or LOGIN_URL
         resp = self.session.post(login_url, data=data)
         orders_page = os.path.basename(self.orders_url_var.get() or ORDERS_URL).lower()
