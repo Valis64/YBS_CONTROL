@@ -1,4 +1,4 @@
-import tkinter as tk
+import customtkinter as ctk
 from tkinter import ttk, messagebox
 import threading
 import requests
@@ -16,32 +16,42 @@ class OrderScraperApp:
         self.session = requests.Session()
         self.logged_in = False
 
-        self.username_var = tk.StringVar()
-        self.password_var = tk.StringVar()
+        self.username_var = ctk.StringVar()
+        self.password_var = ctk.StringVar()
 
         # Tabs
-        self.tab_control = ttk.Notebook(root)
-        self.settings_tab = ttk.Frame(self.tab_control)
-        self.orders_tab = ttk.Frame(self.tab_control)
-        self.tab_control.add(self.settings_tab, text="Settings")
-        self.tab_control.add(self.orders_tab, text="Orders")
+        self.tab_control = ctk.CTkTabview(root)
+        self.settings_tab = self.tab_control.add("Settings")
+        self.orders_tab = self.tab_control.add("Orders")
         self.tab_control.pack(expand=1, fill="both")
 
         # Settings Tab
-        ttk.Label(self.settings_tab, text="Username:").grid(row=0, column=0)
-        ttk.Entry(self.settings_tab, textvariable=self.username_var).grid(row=0, column=1)
-        ttk.Label(self.settings_tab, text="Password:").grid(row=1, column=0)
-        ttk.Entry(self.settings_tab, textvariable=self.password_var, show='*').grid(row=1, column=1)
-        ttk.Button(self.settings_tab, text="Login", command=self.login).grid(row=2, column=0, columnspan=2)
+        ctk.CTkLabel(self.settings_tab, text="Username:").grid(row=0, column=0, padx=5, pady=5)
+        ctk.CTkEntry(self.settings_tab, textvariable=self.username_var).grid(row=0, column=1, padx=5, pady=5)
+        ctk.CTkLabel(self.settings_tab, text="Password:").grid(row=1, column=0, padx=5, pady=5)
+        ctk.CTkEntry(self.settings_tab, textvariable=self.password_var, show='*').grid(row=1, column=1, padx=5, pady=5)
+        ctk.CTkButton(self.settings_tab, text="Login", command=self.login).grid(row=2, column=0, columnspan=2, pady=10)
 
         # Orders Tab
-        self.orders_tree = ttk.Treeview(self.orders_tab, columns=("Order", "Details", "Status", "Priority"), show='headings')
+        self.table_frame = ctk.CTkFrame(self.orders_tab)
+        self.table_frame.pack(expand=1, fill="both", padx=10, pady=10)
+
+        self.orders_tree = ttk.Treeview(
+            self.table_frame,
+            columns=("Order", "Details", "Status", "Priority"),
+            show="headings",
+        )
         self.orders_tree.heading("Order", text="Order")
         self.orders_tree.heading("Details", text="Details")
         self.orders_tree.heading("Status", text="Status")
         self.orders_tree.heading("Priority", text="Priority")
-        self.orders_tree.pack(expand=1, fill="both")
-        ttk.Button(self.orders_tab, text="Refresh Orders", command=self.get_orders).pack()
+        self.orders_tree.pack(side="left", expand=1, fill="both")
+
+        scrollbar = ttk.Scrollbar(self.table_frame, orient="vertical", command=self.orders_tree.yview)
+        self.orders_tree.configure(yscrollcommand=scrollbar.set)
+        scrollbar.pack(side="right", fill="y")
+
+        ctk.CTkButton(self.orders_tab, text="Refresh Orders", command=self.get_orders).pack(pady=5)
 
         # Relogin timer
         self.relogin_thread = threading.Thread(target=self.relogin_loop, daemon=True)
@@ -88,6 +98,8 @@ class OrderScraperApp:
                 self.login()
 
 if __name__ == "__main__":
-    root = tk.Tk()
+    ctk.set_appearance_mode("dark")
+    ctk.set_default_color_theme("dark-blue")
+    root = ctk.CTk()
     app = OrderScraperApp(root)
     root.mainloop()

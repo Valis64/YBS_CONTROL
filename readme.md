@@ -2,7 +2,7 @@ YBS Order Scraper
 A simple Python GUI tool to log in to ybsnow.com, persist the session, and scrape/display order information from the orders table. The session automatically relogs every 2 hours to ensure your session stays fresh.
 
 Features
-Easy-to-use Tkinter GUI with Settings and Orders tabs
+Easy-to-use CustomTkinter GUI with Settings and Orders tabs in a dark teal theme
 
 Secure login (username & password, stored only for session)
 
@@ -21,19 +21,21 @@ requests
 
 beautifulsoup4
 
+customtkinter
+
 Install dependencies with:
 
 bash
 Copy
 Edit
-pip install requests beautifulsoup4
+pip install requests beautifulsoup4 customtkinter
 Usage
 Run the script
 
 bash
 Copy
 Edit
-python ybs_order_scraper.py
+python YBS_CONTROL.py
 Login
 
 Go to the “Settings” tab
@@ -52,7 +54,7 @@ Project Structure
 bash
 Copy
 Edit
-ybs_order_scraper.py     # Main application script
+YBS_CONTROL.py           # Main application script
 README.md                # This file
 Customization
 Table Columns: Add or remove columns in the get_orders() function.
