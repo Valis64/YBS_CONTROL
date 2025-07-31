@@ -79,3 +79,13 @@ This project is for educational/internal automation purposes only. Do not distri
 
 Need a feature or help?
 Open an issue or contact Valis.
+
+Lead Time Report
+----------------
+The `lead_time_report.py` script generates a CSV report showing how long jobs spend in each workstation queue. The input CSV must contain the columns `job_number`, `step`, `time_in`, and `time_out` where the timestamps are in `YYYY-MM-DD HH:MM:SS` format. Usage:
+
+```bash
+python lead_time_report.py data.csv --start 2024-01-01 --end 2024-01-31 --output report.csv
+```
+
+The script removes weekends from the calculation and outputs a `report.csv` file summarizing hours in each queue.
