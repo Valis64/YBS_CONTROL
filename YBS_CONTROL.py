@@ -5,6 +5,10 @@ import requests
 from bs4 import BeautifulSoup
 import time
 import os
+import sqlite3
+import re
+from datetime import datetime
+from manage_html_report import compute_lead_times, write_report
 
 # Default login endpoint on ybsnow.com. The site currently posts the login form
 # to ``index.php`` with fields named "email", "password" and a hidden
@@ -20,6 +24,16 @@ class OrderScraperApp:
 
         self.session = requests.Session()
         self.logged_in = False
+
+        self.db = sqlite3.connect("orders.db")
+        cur = self.db.cursor()
+        cur.execute(
+            "CREATE TABLE IF NOT EXISTS orders (order_number TEXT PRIMARY KEY, company TEXT)"
+        )
+        cur.execute(
+            "CREATE TABLE IF NOT EXISTS steps (order_number TEXT, step TEXT, timestamp TEXT)"
+        )
+        self.db.commit()
 
         self.username_var = ctk.StringVar()
         self.password_var = ctk.StringVar()
@@ -49,11 +63,11 @@ class OrderScraperApp:
 
         self.orders_tree = ttk.Treeview(
             self.table_frame,
-            columns=("Order", "Details", "Status", "Priority"),
+            columns=("Order", "Company", "Status", "Priority"),
             show="headings",
         )
         self.orders_tree.heading("Order", text="Order")
-        self.orders_tree.heading("Details", text="Details")
+        self.orders_tree.heading("Company", text="Company")
         self.orders_tree.heading("Status", text="Status")
         self.orders_tree.heading("Priority", text="Priority")
         self.orders_tree.pack(side="left", expand=1, fill="both")
@@ -62,7 +76,27 @@ class OrderScraperApp:
         self.orders_tree.configure(yscrollcommand=scrollbar.set)
         scrollbar.pack(side="right", fill="y")
 
+        # Report frame for lead time information
+        self.report_frame = ctk.CTkFrame(self.orders_tab)
+        self.report_frame.pack(expand=1, fill="both", padx=10, pady=10)
+
+        self.report_tree = ttk.Treeview(
+            self.report_frame,
+            columns=("Step", "Hours"),
+            show="headings",
+        )
+        self.report_tree.heading("Step", text="Step")
+        self.report_tree.heading("Hours", text="Hours")
+        self.report_tree.pack(side="left", expand=1, fill="both")
+        rscroll = ttk.Scrollbar(self.report_frame, orient="vertical", command=self.report_tree.yview)
+        self.report_tree.configure(yscrollcommand=rscroll.set)
+        rscroll.pack(side="right", fill="y")
+
+        ctk.CTkButton(self.orders_tab, text="Export Report", command=self.export_selected).pack(pady=5)
         ctk.CTkButton(self.orders_tab, text="Refresh Orders", command=self.get_orders).pack(pady=5)
+
+        self.orders_tree.bind("<<TreeviewSelect>>", self.show_report)
+        self.orders_tree.bind("<Double-1>", self.export_report)
 
         # Relogin timer
         self.relogin_thread = threading.Thread(target=self.relogin_loop, daemon=True)
@@ -103,13 +137,87 @@ class OrderScraperApp:
             for tr in tbody.find_all('tr'):
                 tds = tr.find_all('td')
                 try:
-                    order = tds[0].text.strip().replace("\n", " ")
-                    details = tds[1].text.strip().replace("\n", " ")
-                    status = tds[3].text.strip().replace("\n", " ")
+                    order_text = tds[0].get_text(strip=True)
+                    order_num = order_text.split()[-1]
+                    company = tds[1].get_text(strip=True)
+                    status = tds[3].get_text(strip=True)
                     priority = tds[5].find('input').get('value') if tds[5].find('input') else ''
-                    self.orders_tree.insert('', 'end', values=(order, details, status, priority))
+
+                    steps = []
+                    for li in tr.select('ul.workplaces li'):
+                        step_p = li.find('p')
+                        step_name = re.sub(r'^\d+', '', step_p.get_text(strip=True)) if step_p else ''
+                        time_p = li.find('p', class_='np')
+                        ts = None
+                        if time_p:
+                            text = time_p.get_text(strip=True).replace('\xa0', '').strip()
+                            if text:
+                                try:
+                                    ts = datetime.strptime(text, "%m/%d/%y %H:%M")
+                                except ValueError:
+                                    pass
+                        steps.append((step_name, ts))
+
+                    self.log_order(order_num, company, steps)
+                    self.orders_tree.insert('', 'end', values=(order_num, company, status, priority))
                 except Exception as e:
                     print("Error parsing row:", e)
+
+    def log_order(self, order_number, company, steps):
+        cur = self.db.cursor()
+        cur.execute(
+            "INSERT OR REPLACE INTO orders(order_number, company) VALUES (?, ?)",
+            (order_number, company),
+        )
+        cur.execute("DELETE FROM steps WHERE order_number=?", (order_number,))
+        for step, ts in steps:
+            ts_str = ts.isoformat(sep=" ") if ts else None
+            cur.execute(
+                "INSERT INTO steps(order_number, step, timestamp) VALUES (?, ?, ?)",
+                (order_number, step, ts_str),
+            )
+        self.db.commit()
+
+    def load_steps(self, order_number):
+        cur = self.db.cursor()
+        cur.execute(
+            "SELECT step, timestamp FROM steps WHERE order_number=? ORDER BY rowid",
+            (order_number,),
+        )
+        steps = []
+        for step, ts_str in cur.fetchall():
+            ts = datetime.fromisoformat(ts_str) if ts_str else None
+            steps.append((step, ts))
+        return steps
+
+    def show_report(self, event=None):
+        selected = self.orders_tree.focus()
+        if not selected:
+            return
+        order_number = self.orders_tree.item(selected, "values")[0]
+        steps = self.load_steps(order_number)
+        results = compute_lead_times({order_number: steps})
+        self.report_tree.delete(*self.report_tree.get_children())
+        for item in results.get(order_number, []):
+            self.report_tree.insert(
+                "",
+                "end",
+                values=(item["step"], f"{item['hours']:.2f}"),
+            )
+
+    def export_selected(self):
+        self.export_report()
+
+    def export_report(self, event=None):
+        selected = self.orders_tree.focus()
+        if not selected:
+            return
+        order_number = self.orders_tree.item(selected, "values")[0]
+        steps = self.load_steps(order_number)
+        results = compute_lead_times({order_number: steps})
+        path = f"lead_time_{order_number}.csv"
+        write_report(results, path)
+        messagebox.showinfo("Export", f"Report written to {path}")
 
     def relogin_loop(self):
         while True:
