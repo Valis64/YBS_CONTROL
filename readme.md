@@ -14,6 +14,8 @@ Automatic session relogin every 2 hours
 
 Easily extendable for export (CSV, Excel, etc.)
 
+Specify custom Login and Orders URLs (handles .php or .html pages)
+
 Requirements
 Python 3.8+
 
@@ -40,7 +42,9 @@ Login
 
 Go to the “Settings” tab
 
-Enter your YBS username and password, then click Login
+Enter your YBS username and password.
+Optional: adjust the Login URL or Orders URL if your site uses different
+endpoints, then click Login
 
 View Orders
 
