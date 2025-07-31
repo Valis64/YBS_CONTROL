@@ -15,6 +15,7 @@ Automatic session relogin every 2 hours
 Easily extendable for export (CSV, Excel, etc.)
 
 Specify custom Login and Orders URLs (handles .php or .html pages)
+Sends a browser User-Agent header for compatibility
 
 Requirements
 Python 3.8+
@@ -69,6 +70,7 @@ Error Handling: Modify login or table parsing logic as site changes.
 
 Troubleshooting
 If login fails, double-check your credentials.
+If the request fails immediately, ensure your network or proxy allows access to the site. Connection issues will now appear in the login popup.
 
 If the table isn’t loading, the site structure may have changed (contact the maintainer for updates).
 

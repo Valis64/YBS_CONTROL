@@ -15,6 +15,13 @@ class OrderScraperApp:
         self.root.title("Order Scraper")
 
         self.session = requests.Session()
+        self.session.headers.update({
+            "User-Agent": (
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                "AppleWebKit/537.36 (KHTML, like Gecko) "
+                "Chrome/120.0 Safari/537.36"
+            )
+        })
         self.logged_in = False
 
         self.username_var = ctk.StringVar()
@@ -69,7 +76,12 @@ class OrderScraperApp:
         password = self.password_var.get()
         data = {'username': username, 'password': password}
         login_url = self.login_url_var.get() or LOGIN_URL
-        resp = self.session.post(login_url, data=data)
+        try:
+            resp = self.session.post(login_url, data=data, timeout=15)
+        except requests.RequestException as e:
+            self.logged_in = False
+            messagebox.showerror("Login", f"Request failed: {e}")
+            return
         orders_page = os.path.basename(self.orders_url_var.get() or ORDERS_URL).lower()
         if "logout" in resp.text.lower() or orders_page in resp.text.lower():
             self.logged_in = True
@@ -84,7 +96,11 @@ class OrderScraperApp:
             messagebox.showerror("Error", "Not logged in!")
             return
         orders_url = self.orders_url_var.get() or ORDERS_URL
-        resp = self.session.get(orders_url)
+        try:
+            resp = self.session.get(orders_url, timeout=15)
+        except requests.RequestException as e:
+            messagebox.showerror("Orders", f"Request failed: {e}")
+            return
         soup = BeautifulSoup(resp.text, 'html.parser')
         tbody = soup.find('tbody', id='table')
         self.orders_tree.delete(*self.orders_tree.get_children())
