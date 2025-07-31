@@ -1,10 +1,11 @@
-import unittest
-import tempfile
 import os
+import tempfile
+import unittest
 from datetime import datetime
-from manage_html_report import parse_manage_html, compute_lead_times
 
-SAMPLE_HTML = '''
+from manage_html_report import compute_lead_times, parse_manage_html
+
+SAMPLE_HTML = """
 <tbody id="table">
 <tr data-id="1">
 <td class="move"><p>YBS 1001</p></td>
@@ -19,33 +20,45 @@ SAMPLE_HTML = '''
 </td>
 </tr>
 </tbody>
-'''
+"""
+
 
 class ManageHTMLTests(unittest.TestCase):
     def test_parse_manage_html(self):
-        with tempfile.NamedTemporaryFile('w+', delete=False, suffix='.html') as tmp:
+        with tempfile.NamedTemporaryFile("w+", delete=False, suffix=".html") as tmp:
             tmp.write(SAMPLE_HTML)
             tmp_path = tmp.name
         jobs = parse_manage_html(tmp_path)
-        self.assertIn('1001', jobs)
-        steps = jobs['1001']
+        self.assertIn("1001", jobs)
+        steps = jobs["1001"]
         self.assertEqual(len(steps), 3)
-        self.assertEqual(steps[0][0], 'Print Files YBS')
+        self.assertEqual(steps[0][0], "Print Files YBS")
         self.assertIsInstance(steps[0][1], datetime)
         self.assertIsNone(steps[2][1])
         os.remove(tmp_path)
 
     def test_compute_lead_times(self):
-        with tempfile.NamedTemporaryFile('w+', delete=False, suffix='.html') as tmp:
+        with tempfile.NamedTemporaryFile("w+", delete=False, suffix=".html") as tmp:
             tmp.write(SAMPLE_HTML)
             tmp_path = tmp.name
         jobs = parse_manage_html(tmp_path)
         results = compute_lead_times(jobs)
-        entry = results['1001'][0]
-        self.assertAlmostEqual(entry['hours'], 29.0)
-        self.assertIsInstance(entry['start'], datetime)
-        self.assertIsInstance(entry['end'], datetime)
+        entry = results["1001"][0]
+        self.assertAlmostEqual(entry["hours"], 29.0)
+        self.assertIsInstance(entry["start"], datetime)
+        self.assertIsInstance(entry["end"], datetime)
         os.remove(tmp_path)
 
-if __name__ == '__main__':
+    def test_compute_lead_times_date_range(self):
+        with tempfile.NamedTemporaryFile("w+", delete=False, suffix=".html") as tmp:
+            tmp.write(SAMPLE_HTML)
+            tmp_path = tmp.name
+        jobs = parse_manage_html(tmp_path)
+        start = datetime(2025, 7, 23)
+        results = compute_lead_times(jobs, start_date=start)
+        self.assertEqual(len(results["1001"]), 0)
+        os.remove(tmp_path)
+
+
+if __name__ == "__main__":
     unittest.main()
