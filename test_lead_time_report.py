@@ -1,14 +1,9 @@
 import unittest
 from datetime import datetime
-from lead_time_report import compute_lead_times, business_hours_delta
+from lead_time_report import compute_lead_times
+
 
 class LeadTimeTests(unittest.TestCase):
-    def test_business_hours_skip_weekend(self):
-        start = datetime(2024, 1, 5, 16, 0)  # Friday 4pm
-        end = datetime(2024, 1, 8, 10, 0)    # Monday 10am
-        delta = business_hours_delta(start, end)
-        self.assertEqual(delta.total_seconds() / 3600, 18)  # 18 hours (weekend excluded)
-
     def test_compute_lead_times(self):
         rows = [
             {

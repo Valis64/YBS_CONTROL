@@ -1,7 +1,9 @@
 import csv
-from datetime import datetime, timedelta
+from datetime import datetime
 from collections import defaultdict
 import argparse
+
+from time_utils import business_hours_delta
 
 DATE_FORMAT = "%Y-%m-%d %H:%M:%S"
 
@@ -25,19 +27,6 @@ def load_rows(path):
                 "time_in": datetime.strptime(row.get("time_in"), DATE_FORMAT),
                 "time_out": datetime.strptime(row.get("time_out"), DATE_FORMAT),
             }
-
-
-def business_hours_delta(start, end):
-    total = timedelta(0)
-    current = start
-    while current < end:
-        next_day = (current + timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0)
-        working_end = min(next_day, end)
-        # skip weekends
-        if current.weekday() < 5:
-            total += working_end - current
-        current = next_day
-    return total
 
 
 def compute_lead_times(rows, start_date=None, end_date=None):
