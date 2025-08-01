@@ -88,7 +88,11 @@ The `lead_time_report.py` script generates a CSV report showing how long jobs sp
 python lead_time_report.py data.csv --start 2024-01-01 --end 2024-01-31 --output report.csv
 ```
 
-The script removes weekends from the calculation and outputs a `report.csv` file summarizing hours in each queue.
+The script calculates time spent in each queue using business hours
+(8:00–16:30, Monday–Friday) and excludes weekends from the
+calculation. A helper `business_hours_breakdown()` function in
+`time_utils.py` can be used to inspect the exact segments counted if you
+need to verify how business hours were applied.
 
 Date range filtering is available directly in the GUI. Enter a start and/or end
 date on the Orders tab (in `YYYY-MM-DD` format) and use **Export Date Range** to
