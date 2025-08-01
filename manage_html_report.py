@@ -68,9 +68,7 @@ def compute_lead_times(jobs, start_date=None, end_date=None):
 
     results = defaultdict(list)
     for job, steps in jobs.items():
-        for i in range(len(steps) - 1):
-            name, start = steps[i]
-            next_name, end = steps[i + 1]
+        for (name, start), (next_name, end) in zip(steps, steps[1:]):
             if not start or not end:
                 continue
             if start_date and start < start_date:
