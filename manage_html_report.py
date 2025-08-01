@@ -2,9 +2,11 @@ import argparse
 import csv
 import re
 from collections import defaultdict
-from datetime import datetime, timedelta
+from datetime import datetime
 
 from bs4 import BeautifulSoup
+
+from time_utils import business_hours_delta
 
 HTML_DATE_FORMAT = "%m/%d/%y %H:%M"
 
@@ -20,20 +22,6 @@ def parse_args():
     parser.add_argument("--start", help="Start date (YYYY-MM-DD)")
     parser.add_argument("--end", help="End date (YYYY-MM-DD)")
     return parser.parse_args()
-
-
-def business_hours_delta(start, end):
-    total = timedelta(0)
-    current = start
-    while current < end:
-        next_day = (current + timedelta(days=1)).replace(
-            hour=0, minute=0, second=0, microsecond=0
-        )
-        working_end = min(next_day, end)
-        if current.weekday() < 5:
-            total += working_end - current
-        current = next_day
-    return total
 
 
 def parse_manage_html(path):
