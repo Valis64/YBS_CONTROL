@@ -27,6 +27,9 @@ class YBSControlTests(unittest.TestCase):
         self.app.tab_control = MagicMock()
         self.app.logged_in = True
         self.app.orders_tree = MagicMock()
+        self.app.orders_tree.get_children.return_value = []
+        self.app.log_order = MagicMock()
+        self.app.refresh_database_tab = MagicMock()
         self.app.order_rows = []
 
     @patch("YBS_CONTROL.messagebox")
@@ -49,6 +52,27 @@ class YBSControlTests(unittest.TestCase):
         self.app.session.get.assert_called_with("http://example.com/orders", timeout=10)
         mock_messagebox.showerror.assert_called_once()
         self.app.orders_tree.delete.assert_not_called()
+
+    @patch("YBS_CONTROL.messagebox")
+    def test_parse_company_and_order_from_same_cell(self, mock_messagebox):
+        html = (
+            "<table><tbody id='table'>"
+            "<tr>"
+            "<td>ACME Corp<br>Order #12345<ul class='workplaces'></ul></td>"
+            "<td></td>"
+            "<td>Running</td>"
+            "<td></td>"
+            "<td><input value='High'/></td>"
+            "</tr>"
+            "</tbody></table>"
+        )
+        mock_response = MagicMock()
+        mock_response.text = html
+        self.app.session.get.return_value = mock_response
+        self.app.get_orders()
+        self.app.orders_tree.insert.assert_called_once()
+        args, kwargs = self.app.orders_tree.insert.call_args
+        self.assertEqual(kwargs["values"], ("12345", "ACME Corp", "Running", "High"))
 
 
 if __name__ == "__main__":

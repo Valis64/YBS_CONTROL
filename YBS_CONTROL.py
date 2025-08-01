@@ -197,12 +197,30 @@ class OrderScraperApp:
             for tr in tbody.find_all('tr'):
                 tds = tr.find_all('td')
                 try:
-                    order_text = tds[0].get_text(strip=True)
-                    order_num = order_text.split()[-1]
-                    order_num = re.sub(r'[^A-Za-z0-9_-]', '', order_num)
-                    company = tds[1].get_text(strip=True)
-                    status = tds[3].get_text(strip=True)
-                    priority = tds[5].find('input').get('value') if tds[5].find('input') else ''
+                    # Some rows place the company name and order number in the
+                    # same table cell.  Collect the string fragments from that
+                    # cell and split out the first textual fragment as the
+                    # company name and the first fragment containing digits as
+                    # the order number.  This keeps each value under the
+                    # correct heading in the UI.
+                    cell_parts = list(tds[0].stripped_strings)
+                    order_num = ""
+                    company = ""
+                    for part in cell_parts:
+                        if not order_num and re.search(r"\d", part):
+                            match = re.search(r"([A-Za-z0-9_-]+)$", part)
+                            order_num = match.group(1) if match else re.sub(r"[^A-Za-z0-9_-]", "", part)
+                        elif not company:
+                            company = part
+
+                    # Remaining columns contain status and priority, but the
+                    # page includes spacer cells.  Use indexes 2 and 4 rather
+                    # than 1 and 3 to skip those spacers when present.
+                    status = tds[2].get_text(strip=True) if len(tds) > 2 else ""
+                    priority = ""
+                    if len(tds) > 4:
+                        pri_input = tds[4].find("input")
+                        priority = pri_input.get("value") if pri_input else tds[4].get_text(strip=True)
 
                     steps = []
                     for li in tr.select('ul.workplaces li'):
