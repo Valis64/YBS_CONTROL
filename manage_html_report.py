@@ -1,6 +1,7 @@
 import argparse
 import csv
 import re
+import logging
 from collections import defaultdict
 from datetime import datetime
 
@@ -33,10 +34,11 @@ def parse_manage_html(path):
         if not move_td:
             continue
         job_text = move_td.get_text(strip=True)
-        parts = job_text.split()
-        job_number = parts[-1] if parts else None
-        if not job_number:
+        match = re.search(r"\b(\d+)\b", job_text)
+        if not match:
+            logging.warning("Could not find job ID in row: %s", job_text)
             continue
+        job_number = match.group(1)
         steps = []
         for li in tr.select("ul.workplaces li"):
             step_p = li.find("p")
