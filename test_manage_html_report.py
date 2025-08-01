@@ -90,7 +90,7 @@ class ManageHTMLTests(unittest.TestCase):
         jobs = parse_manage_html(self.tmp_path)
         results = compute_lead_times(jobs)
         entry = results["1001"][0]
-        self.assertAlmostEqual(entry["hours"], 29.0)
+        self.assertAlmostEqual(entry["hours"], 13.5)
         self.assertIsInstance(entry["start"], datetime)
         self.assertIsInstance(entry["end"], datetime)
 
