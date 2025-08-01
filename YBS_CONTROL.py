@@ -161,7 +161,11 @@ class OrderScraperApp:
             'action': 'signin',
         }
         login_url = self.login_url_var.get() or LOGIN_URL
-        resp = self.session.post(login_url, data=data)
+        try:
+            resp = self.session.post(login_url, data=data, timeout=10)
+        except requests.RequestException as e:
+            messagebox.showerror("Login", f"Login request failed: {e}")
+            return
         orders_page = os.path.basename(self.orders_url_var.get() or ORDERS_URL).lower()
         if "logout" in resp.text.lower() or orders_page in resp.text.lower():
             self.logged_in = True
@@ -180,7 +184,11 @@ class OrderScraperApp:
             messagebox.showerror("Error", "Not logged in!")
             return
         orders_url = self.orders_url_var.get() or ORDERS_URL
-        resp = self.session.get(orders_url)
+        try:
+            resp = self.session.get(orders_url, timeout=10)
+        except requests.RequestException as e:
+            messagebox.showerror("Error", f"Failed to fetch orders: {e}")
+            return
         soup = BeautifulSoup(resp.text, 'html.parser')
         tbody = soup.find('tbody', id='table')
         self.orders_tree.delete(*self.orders_tree.get_children())
