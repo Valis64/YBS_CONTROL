@@ -40,18 +40,24 @@ SAMPLE_HTML_TEMPLATE = """
 
 
 class ManageHTMLTests(unittest.TestCase):
+    def setUp(self):
+        tmp = tempfile.NamedTemporaryFile("w+", delete=False, suffix=".html")
+        tmp.write(SAMPLE_HTML)
+        tmp.flush()
+        self.tmp_path = tmp.name
+        tmp.close()
+
+    def tearDown(self):
+        os.remove(self.tmp_path)
+
     def test_parse_manage_html(self):
-        with tempfile.NamedTemporaryFile("w+", delete=False, suffix=".html") as tmp:
-            tmp.write(SAMPLE_HTML)
-            tmp_path = tmp.name
-        jobs = parse_manage_html(tmp_path)
+        jobs = parse_manage_html(self.tmp_path)
         self.assertIn("1001", jobs)
         steps = jobs["1001"]
         self.assertEqual(len(steps), 3)
         self.assertEqual(steps[0][0], "Print Files YBS")
         self.assertIsInstance(steps[0][1], datetime)
         self.assertIsNone(steps[2][1])
-        os.remove(tmp_path)
 
     def test_parse_manage_html_trailing_punctuation(self):
         html = SAMPLE_HTML_TEMPLATE.format(job_text="YBS 1002.")
@@ -81,26 +87,18 @@ class ManageHTMLTests(unittest.TestCase):
         os.remove(tmp_path)
 
     def test_compute_lead_times(self):
-        with tempfile.NamedTemporaryFile("w+", delete=False, suffix=".html") as tmp:
-            tmp.write(SAMPLE_HTML)
-            tmp_path = tmp.name
-        jobs = parse_manage_html(tmp_path)
+        jobs = parse_manage_html(self.tmp_path)
         results = compute_lead_times(jobs)
         entry = results["1001"][0]
         self.assertAlmostEqual(entry["hours"], 29.0)
         self.assertIsInstance(entry["start"], datetime)
         self.assertIsInstance(entry["end"], datetime)
-        os.remove(tmp_path)
 
     def test_compute_lead_times_date_range(self):
-        with tempfile.NamedTemporaryFile("w+", delete=False, suffix=".html") as tmp:
-            tmp.write(SAMPLE_HTML)
-            tmp_path = tmp.name
-        jobs = parse_manage_html(tmp_path)
+        jobs = parse_manage_html(self.tmp_path)
         start = datetime(2025, 7, 23)
         results = compute_lead_times(jobs, start_date=start)
         self.assertEqual(len(results["1001"]), 0)
-        os.remove(tmp_path)
 
 
 if __name__ == "__main__":
