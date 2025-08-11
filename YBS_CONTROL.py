@@ -994,9 +994,11 @@ class OrderScraperApp:
     def load_production_events(self, start, end):
         """Return production events overlapping the given range."""
         cur = self.db.cursor()
-        cur.execute("SELECT order_number, workstation, start, end FROM lead_times")
+        cur.execute(
+            "SELECT order_number, workstation, start, end, hours FROM lead_times"
+        )
         events = []
-        for order, ws, s, e in cur.fetchall():
+        for order, ws, s, e, hours in cur.fetchall():
             if not s or not e:
                 continue
             try:
@@ -1012,6 +1014,7 @@ class OrderScraperApp:
                     "workstation": ws,
                     "startTime": s_dt.isoformat(),
                     "endTime": e_dt.isoformat(),
+                    "hours": hours,
                 }
             )
         return events
@@ -1068,8 +1071,10 @@ class OrderScraperApp:
         self.prod_summary_tree.delete(*self.prod_summary_tree.get_children())
         self.prod_summary_tree["columns"] = headers
         for h in headers:
+            anchor = "w" if h == "Workstation" else "e"
+            width = 150 if h == "Workstation" else 100
             self.prod_summary_tree.heading(h, text=h, command=lambda c=h: self.sort_prod_summary(c))
-            self.prod_summary_tree.column(h, width=100, anchor="e")
+            self.prod_summary_tree.column(h, width=width, anchor=anchor)
         for idx, row in enumerate(rows):
             tag = "even" if idx % 2 == 0 else "odd"
             self.prod_summary_tree.insert("", "end", values=row, tags=(tag,))

@@ -40,13 +40,14 @@ def _parse_datetime(value):
 
 
 def clip_event(event: Dict, start: datetime, end: datetime) -> float:
-    """Clamp an event to ``start``/``end`` and return the clipped duration.
+    """Clamp an event to ``start``/``end`` and return the clipped hours.
 
     ``event`` is expected to contain ``startTime`` and ``endTime`` keys which
     may be either ISO formatted strings or :class:`datetime` objects.  The
     function mutates these fields, storing ISO strings for the clipped start and
-    end times.  The return value is the duration of the clipped interval in
-    hours.
+    end times.  If ``event`` also includes an ``hours`` field, it is scaled by
+    the proportion of the interval that remains after clipping.  Otherwise the
+    duration is calculated directly from the timestamps.
     """
 
     ev_start = _parse_datetime(event["startTime"])
@@ -61,6 +62,14 @@ def clip_event(event: Dict, start: datetime, end: datetime) -> float:
 
     if clipped_start >= clipped_end:
         return 0.0
+
+    if "hours" in event and event["hours"] is not None:
+        total_seconds = (ev_end - ev_start).total_seconds()
+        if total_seconds <= 0:
+            return 0.0
+        clipped_seconds = (clipped_end - clipped_start).total_seconds()
+        return event["hours"] * (clipped_seconds / total_seconds)
+
     return (clipped_end - clipped_start).total_seconds() / 3600.0
 
 
@@ -120,6 +129,8 @@ def generate_production_report(
             continue
 
         clip_data = {"startTime": ev_start, "endTime": ev_end}
+        if "hours" in ev:
+            clip_data["hours"] = ev.get("hours")
         hours = clip_event(clip_data, start_dt, end_dt)
         if hours <= 0:
             continue
@@ -167,33 +178,23 @@ def generate_production_report(
 
 
 def _build_summary_table(report: Dict[str, object]):
-    """Return headers and rows for the summary portion of ``report``.
+    """Return headers and rows summarising hours by workstation.
 
-    The function returns a tuple ``(headers, rows)`` where ``headers`` is a
-    list of column names and ``rows`` a list of row data ready for export.
-    ``report`` is expected to be the structure produced by
+    The resulting table has two columns: ``Workstation`` and ``Hours``.  A
+    final row labelled ``Grand Total`` contains the sum of all workstation
+    hours.  ``report`` is expected to be the structure produced by
     :func:`generate_production_report`.
     """
 
-    summary = report.get("summary", [])
     totals = report.get("totals", {})
-    # Discover all workstations used in the report
-    workstations = sorted({ws for s in summary for ws in s["workstations"]})
 
-    headers = ["Order ID", *workstations, "Order Total"]
+    headers = ["Workstation", "Hours"]
     rows: List[List[str]] = []
-    for s in summary:
-        row = [s["orderId"]]
-        for ws in workstations:
-            row.append(f"{s['workstations'].get(ws, 0):.2f}")
-        row.append(f"{s['order_total']:.2f}")
-        rows.append(row)
 
-    total_row = ["Totals"]
-    for ws in workstations:
-        total_row.append(f"{totals.get(ws, 0):.2f}")
-    total_row.append(f"{totals.get('grand_total', 0):.2f}")
-    rows.append(total_row)
+    for ws in sorted(k for k in totals.keys() if k != "grand_total"):
+        rows.append([ws, f"{totals.get(ws, 0):.2f}"])
+
+    rows.append(["Grand Total", f"{totals.get('grand_total', 0):.2f}"])
     return headers, rows
 
 
