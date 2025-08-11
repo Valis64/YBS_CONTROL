@@ -9,7 +9,7 @@ summary structure suitable for programmatic consumption.
 """
 
 from collections import defaultdict
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from zoneinfo import ZoneInfo
 from typing import Dict, Iterable, List
 import csv
@@ -17,6 +17,9 @@ import json
 import os
 import sys
 import argparse
+
+
+MAX_DAYS = int(os.getenv("PRODUCTION_REPORT_MAX_DAYS", "31"))
 
 
 def _parse_datetime(value):
@@ -74,11 +77,13 @@ def generate_production_report(
         ``datetime`` objects.
     start, end:
         ISO formatted strings representing the inclusive range to consider.
-        They are interpreted as UTC, converted to the target ``tz`` timezone
-        and used to clip events.
+        They are interpreted as UTC, validated to ensure ``end`` is not before
+        ``start`` and that the range does not exceed :data:`MAX_DAYS`.  The
+        range is converted to the target ``tz`` timezone and used to clip
+        events.
     tz:
-        IANA timezone name to which all times will be converted.  Defaults to
-        ``"UTC"``.
+        IANA timezone name to which detail timestamps will be converted for
+        presentation.  Defaults to ``"UTC"``.
 
     Returns
     -------
@@ -89,8 +94,15 @@ def generate_production_report(
 
     tzinfo = ZoneInfo(tz)
 
-    start_dt = _parse_datetime(start).astimezone(tzinfo)
-    end_dt = _parse_datetime(end).astimezone(tzinfo)
+    start_utc = _parse_datetime(start).astimezone(timezone.utc)
+    end_utc = _parse_datetime(end).astimezone(timezone.utc)
+    if end_utc < start_utc:
+        raise ValueError("end must be greater than or equal to start")
+    if end_utc - start_utc > timedelta(days=MAX_DAYS):
+        raise ValueError(f"date range exceeds {MAX_DAYS} days")
+
+    start_dt = start_utc.astimezone(tzinfo)
+    end_dt = end_utc.astimezone(tzinfo)
 
     # Aggregation containers
     by_order = defaultdict(lambda: defaultdict(float))
@@ -119,8 +131,12 @@ def generate_production_report(
             {
                 "orderId": order_id,
                 "workstation": workstation,
-                "start": clip_data["startTime"],
-                "end": clip_data["endTime"],
+                "start": _parse_datetime(clip_data["startTime"]).astimezone(
+                    timezone.utc
+                ).isoformat(),
+                "end": _parse_datetime(clip_data["endTime"]).astimezone(
+                    timezone.utc
+                ).isoformat(),
                 "hours": round(hours, 2),
             }
         )
@@ -142,7 +158,12 @@ def generate_production_report(
     totals = {ws: round(h, 2) for ws, h in sorted(totals_by_ws.items())}
     totals["grand_total"] = round(sum(totals_by_ws.values()), 2)
 
-    return {"summary": summary, "totals": totals, "details": details}
+    return {
+        "summary": summary,
+        "totals": totals,
+        "details": details,
+        "timezone": tz,
+    }
 
 
 def _build_summary_table(report: Dict[str, object]):
@@ -179,15 +200,19 @@ def _build_summary_table(report: Dict[str, object]):
 def _build_detail_table(report: Dict[str, object]):
     """Return headers and rows for the detail portion of ``report``."""
 
+    tzinfo = ZoneInfo(report.get("timezone", "UTC"))
+
     headers = ["Order ID", "Workstation", "Start", "End", "Hours"]
     rows = []
     for d in report.get("details", []):
+        start = _parse_datetime(d.get("start")).astimezone(tzinfo).isoformat()
+        end = _parse_datetime(d.get("end")).astimezone(tzinfo).isoformat()
         rows.append(
             [
                 d.get("orderId"),
                 d.get("workstation"),
-                str(d.get("start")),
-                str(d.get("end")),
+                start,
+                end,
                 f"{d.get('hours', 0):.2f}",
             ]
         )
