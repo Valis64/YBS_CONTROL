@@ -45,6 +45,8 @@ class OrderScraperApp:
         self.password_var = ctk.StringVar()
         self.login_url_var = ctk.StringVar(value=LOGIN_URL)
         self.orders_url_var = ctk.StringVar(value=ORDERS_URL)
+        self.refresh_interval_var = ctk.IntVar(value=5)
+        self.auto_refresh_job = None
 
         # Tabs
         self.tab_control = ctk.CTkTabview(root)
@@ -64,6 +66,21 @@ class OrderScraperApp:
         ctk.CTkLabel(self.settings_tab, text="Orders URL:").grid(row=3, column=0, padx=5, pady=5)
         ctk.CTkEntry(self.settings_tab, textvariable=self.orders_url_var).grid(row=3, column=1, padx=5, pady=5)
         ctk.CTkButton(self.settings_tab, text="Login", command=self.login).grid(row=4, column=0, columnspan=2, pady=10)
+
+        ctk.CTkLabel(self.settings_tab, text="Refresh interval (min):").grid(row=5, column=0, padx=5, pady=5)
+        self.refresh_entry = ctk.CTkEntry(
+            self.settings_tab,
+            textvariable=self.refresh_interval_var,
+            state="disabled",
+        )
+        self.refresh_entry.grid(row=5, column=1, padx=5, pady=5)
+        self.refresh_button = ctk.CTkButton(
+            self.settings_tab,
+            text="Set Interval",
+            command=self.schedule_auto_refresh,
+            state="disabled",
+        )
+        self.refresh_button.grid(row=6, column=0, columnspan=2, pady=10)
 
         # Orders Tab
         self.search_var = ctk.StringVar()
@@ -175,6 +192,9 @@ class OrderScraperApp:
                 self.tab_control.set("Orders")
             except Exception:
                 pass
+            self.refresh_entry.configure(state="normal")
+            self.refresh_button.configure(state="normal")
+            self.schedule_auto_refresh()
         else:
             self.logged_in = False
             messagebox.showerror("Login", "Login failed.")
@@ -445,6 +465,27 @@ class OrderScraperApp:
         path = f"lead_time_{s}_{e}.csv"
         write_report(results, path)
         messagebox.showinfo("Export", f"Report written to {path}")
+
+    def schedule_auto_refresh(self):
+        if not self.logged_in:
+            return
+        try:
+            interval = int(self.refresh_interval_var.get())
+        except (TypeError, ValueError):
+            interval = 5
+            self.refresh_interval_var.set(interval)
+        interval_ms = max(1, interval) * 60 * 1000
+        if self.auto_refresh_job is not None:
+            try:
+                self.root.after_cancel(self.auto_refresh_job)
+            except Exception:
+                pass
+        self.auto_refresh_job = self.root.after(interval_ms, self.auto_refresh)
+
+    def auto_refresh(self):
+        if self.logged_in:
+            self.get_orders()
+        self.schedule_auto_refresh()
 
     def refresh_database_tab(self):
         """Populate the Database tab with the Orders table contents."""
