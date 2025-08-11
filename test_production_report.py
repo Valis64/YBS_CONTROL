@@ -69,6 +69,22 @@ def test_clip_event_trims_to_boundaries():
     assert event["endTime"] == "2024-01-01T03:00:00+00:00"
 
 
+def test_clip_event_uses_precomputed_hours():
+    event = {
+        "startTime": "2024-01-01T00:00:00Z",
+        "endTime": "2024-01-01T05:00:00Z",
+        "hours": 2.5,
+    }
+    start = datetime(2024, 1, 1, 1, 0, tzinfo=timezone.utc)
+    end = datetime(2024, 1, 1, 3, 0, tzinfo=timezone.utc)
+
+    hours = clip_event(event, start, end)
+
+    assert round(hours, 2) == 1.0
+    assert event["startTime"] == "2024-01-01T01:00:00+00:00"
+    assert event["endTime"] == "2024-01-01T03:00:00+00:00"
+
+
 def test_generate_production_report(sample_events):
     report = generate_production_report(
         sample_events, "2024-01-01T00:00:00Z", "2024-01-02T00:00:00Z"
@@ -128,6 +144,26 @@ def test_generate_production_report(sample_events):
     assert report["details"] == expected_details
 
 
+def test_generate_report_uses_precomputed_hours():
+    events = [
+        {
+            "orderId": "X",
+            "workstation": "Cut",
+            "startTime": "2024-01-01T00:00:00Z",
+            "endTime": "2024-01-01T10:00:00Z",
+            "hours": 5.0,
+        }
+    ]
+    report = generate_production_report(
+        events, "2024-01-01T02:00:00Z", "2024-01-01T06:00:00Z"
+    )
+
+    assert report["summary"][0]["workstations"]["Cut"] == 2.0
+    assert report["totals"]["Cut"] == 2.0
+    assert report["totals"]["grand_total"] == 2.0
+    assert report["details"][0]["hours"] == 2.0
+
+
 def test_generate_production_report_validates_range(sample_events):
     with pytest.raises(ValueError):
         generate_production_report(
@@ -151,10 +187,11 @@ def test_export_to_csv(sample_events, tmp_path):
     with open(tmp_path / "Summary.csv") as fh:
         rows = list(csv.reader(fh))
     assert rows == [
-        ["Order ID", "Cut", "Paint", "Weld", "Order Total"],
-        ["A", "2.00", "0.00", "2.00", "4.00"],
-        ["B", "1.00", "1.00", "0.00", "2.00"],
-        ["Totals", "3.00", "1.00", "2.00", "6.00"],
+        ["Workstation", "Hours"],
+        ["Cut", "3.00"],
+        ["Paint", "1.00"],
+        ["Weld", "2.00"],
+        ["Grand Total", "6.00"],
     ]
 
     with open(tmp_path / "Details.csv") as fh:

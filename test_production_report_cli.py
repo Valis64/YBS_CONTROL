@@ -42,10 +42,10 @@ def test_export_to_csv(tmp_path):
 
     with open(tmp_path / "Summary.csv", newline="") as fh:
         rows = list(csv.reader(fh))
-    assert rows[0] == ["Order ID", "Cut", "Print", "Order Total"]
-    assert rows[1] == ["A", "1.00", "2.00", "3.00"]
-    assert rows[2] == ["B", "2.00", "0.00", "2.00"]
-    assert rows[3] == ["Totals", "3.00", "2.00", "5.00"]
+    assert rows[0] == ["Workstation", "Hours"]
+    assert rows[1] == ["Cut", "3.00"]
+    assert rows[2] == ["Print", "2.00"]
+    assert rows[3] == ["Grand Total", "5.00"]
 
     with open(tmp_path / "Details.csv", newline="") as fh:
         drows = list(csv.reader(fh))
