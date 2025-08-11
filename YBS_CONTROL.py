@@ -106,12 +106,11 @@ class OrderScraperApp:
         # date range report configuration
         self.range_start_var = ctk.StringVar()
         self.range_end_var = ctk.StringVar()
-        self.range_filter_var = ctk.StringVar()
         self.range_total_jobs_var = ctk.StringVar(value="0")
         self.range_total_hours_var = ctk.StringVar(value="0.00")
-        self.range_avg_hours_var = ctk.StringVar(value="0.00")
         self.date_range_rows = []
         self.filtered_date_range_rows = []
+        self.raw_date_range_rows = []
 
         # Tabs
         self.tab_control = ctk.CTkTabview(root)
@@ -350,34 +349,19 @@ class OrderScraperApp:
             row=0, column=5, padx=5, pady=5
         )
 
-        ctk.CTkLabel(control_frame, text="Filter:").grid(row=1, column=0, padx=5, pady=5)
-        filter_entry = ctk.CTkEntry(control_frame, textvariable=self.range_filter_var)
-        filter_entry.grid(row=1, column=1, columnspan=5, sticky="ew", padx=5, pady=5)
-        self.range_filter_var.trace_add("write", lambda *args: self.filter_date_range_rows())
-
         self.date_range_tab.grid_rowconfigure(2, weight=1)
         self.date_range_tab.grid_columnconfigure(0, weight=1)
         table_frame = ctk.CTkFrame(self.date_range_tab)
         table_frame.grid(row=2, column=0, columnspan=6, sticky="nsew", padx=10, pady=10)
 
         columns = (
-            "order",
-            "customer",
             "workstation",
             "hours",
-            "status",
-            "start",
-            "end",
         )
         self.date_tree = ttk.Treeview(table_frame, columns=columns, show="headings")
         headings = [
-            "Order ID",
-            "Customer Name",
             "Workstation",
-            "Job Hours",
-            "Status",
-            "Date Started",
-            "Date Completed",
+            "Hours",
         ]
         for col, head in zip(columns, headings):
             self.date_tree.heading(col, text=head, command=lambda c=col: self.sort_date_range_table(c))
@@ -389,8 +373,6 @@ class OrderScraperApp:
 
         self.date_tree.tag_configure("even", background="#ffffff")
         self.date_tree.tag_configure("odd", background="#f0f0ff")
-        self.date_tree.tag_configure("Completed", background="#d0ffd0")
-        self.date_tree.tag_configure("In Progress", background="#fff4b0")
         self.date_tree.tag_configure("total", background="#e0e0e0", font=("Arial", 10, "bold"))
 
         summary = ctk.CTkFrame(self.date_range_tab)
@@ -399,8 +381,6 @@ class OrderScraperApp:
         ctk.CTkLabel(summary, textvariable=self.range_total_jobs_var).grid(row=0, column=1, padx=5, pady=5)
         ctk.CTkLabel(summary, text="Total Hours:").grid(row=0, column=2, padx=5, pady=5)
         ctk.CTkLabel(summary, textvariable=self.range_total_hours_var).grid(row=0, column=3, padx=5, pady=5)
-        ctk.CTkLabel(summary, text="Average Hours per Job:").grid(row=0, column=4, padx=5, pady=5)
-        ctk.CTkLabel(summary, textvariable=self.range_avg_hours_var).grid(row=0, column=5, padx=5, pady=5)
 
         self.refresh_database_tab()
         self.schedule_daily_export()
@@ -1176,32 +1156,25 @@ class OrderScraperApp:
         self.date_tree.delete(*self.date_tree.get_children())
         total = 0.0
         for idx, r in enumerate(rows):
-            tags = ["even" if idx % 2 == 0 else "odd", r["status"]]
+            tags = ["even" if idx % 2 == 0 else "odd"]
             values = (
-                r["order"],
-                r["customer"],
                 r["workstation"],
                 f"{r['hours']:.2f}",
-                r["status"],
-                r["start"],
-                r["end"],
             )
             self.date_tree.insert("", "end", values=values, tags=tags)
             total += r["hours"]
         self.date_tree.insert(
             "",
             "end",
-            values=("TOTAL", "", "", f"{total:.2f}", "", "", ""),
+            values=("TOTAL", f"{total:.2f}"),
             tags=("total",),
         )
 
     def update_date_range_summary(self, rows):
         total_jobs = len(rows)
         total_hours = sum(r["hours"] for r in rows)
-        avg = total_hours / total_jobs if total_jobs else 0.0
         self.range_total_jobs_var.set(str(total_jobs))
         self.range_total_hours_var.set(f"{total_hours:.2f}")
-        self.range_avg_hours_var.set(f"{avg:.2f}")
 
     def run_date_range_report(self):
         start, end = self.get_date_range(self.range_start_var, self.range_end_var)
@@ -1209,30 +1182,25 @@ class OrderScraperApp:
             messagebox.showerror("Date Range Report", "Start and end dates are required")
             return
         rows = self.load_jobs_by_date_range(start, end)
-        self.date_range_rows = rows
-        self.filtered_date_range_rows = list(rows)
-        self.populate_date_range_table(rows)
-        self.update_date_range_summary(rows)
-
-    def filter_date_range_rows(self, *args):
-        term = self.range_filter_var.get().lower()
-        if not term:
-            rows = self.date_range_rows
-        else:
-            rows = [
-                r
-                for r in self.date_range_rows
-                if any(term in str(v).lower() for v in r.values())
-            ]
-        self.filtered_date_range_rows = rows
-        self.populate_date_range_table(rows)
-        self.update_date_range_summary(rows)
+        self.raw_date_range_rows = list(rows)
+        grouped = {}
+        for r in rows:
+            ws = r.get("workstation", "")
+            grouped[ws] = grouped.get(ws, 0.0) + (r.get("hours") or 0.0)
+        grouped_rows = [
+            {"workstation": ws, "hours": hrs}
+            for ws, hrs in grouped.items()
+        ]
+        self.date_range_rows = grouped_rows
+        self.filtered_date_range_rows = list(grouped_rows)
+        self.populate_date_range_table(grouped_rows)
+        self.update_date_range_summary(self.raw_date_range_rows)
 
     def sort_date_range_table(self, column, reverse=False):
         key = column
         self.filtered_date_range_rows.sort(key=lambda r: r[key], reverse=reverse)
         self.populate_date_range_table(self.filtered_date_range_rows)
-        self.update_date_range_summary(self.filtered_date_range_rows)
+        self.update_date_range_summary(self.raw_date_range_rows)
         self.date_tree.heading(
             column, command=lambda: self.sort_date_range_table(column, not reverse)
         )
@@ -1240,9 +1208,9 @@ class OrderScraperApp:
     def clear_date_range_report(self):
         self.range_start_var.set("")
         self.range_end_var.set("")
-        self.range_filter_var.set("")
         self.date_range_rows = []
         self.filtered_date_range_rows = []
+        self.raw_date_range_rows = []
         self.date_tree.delete(*self.date_tree.get_children())
         self.update_date_range_summary([])
 
