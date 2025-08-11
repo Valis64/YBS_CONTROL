@@ -8,8 +8,11 @@ import os
 import sqlite3
 import re
 from datetime import datetime
+import json
+
 from manage_html_report import compute_lead_times, write_report
-from time_utils import business_hours_delta
+import time_utils
+from time_utils import business_hours_delta, business_hours_breakdown
 
 # Default login endpoint on ybsnow.com. The site currently posts the login form
 # to ``index.php`` with fields named "email", "password" and a hidden
@@ -17,6 +20,7 @@ from time_utils import business_hours_delta
 # if the endpoint changes again in the future.
 LOGIN_URL = "https://www.ybsnow.com/index.php"
 ORDERS_URL = "https://www.ybsnow.com/manage.html"
+CONFIG_FILE = os.path.expanduser("~/.ybs_control_config.json")
 
 class OrderScraperApp:
     def __init__(self, root):
@@ -26,8 +30,11 @@ class OrderScraperApp:
         self.session = requests.Session()
         self.logged_in = False
 
-        self.db_path_var = ctk.StringVar(value="orders.db")
-        self.connect_db(self.db_path_var.get())
+        self.config = self.load_config()
+        db_path = self.config.get("db_path", "orders.db")
+        self.db_path_var = ctk.StringVar(value=db_path)
+        self.last_db_dir = os.path.dirname(db_path) or os.getcwd()
+        self.connect_db(db_path)
 
         self.order_rows = []
 
@@ -75,6 +82,14 @@ class OrderScraperApp:
         ctk.CTkLabel(self.settings_tab, text="Database File:").grid(row=7, column=0, padx=5, pady=5)
         ctk.CTkEntry(self.settings_tab, textvariable=self.db_path_var).grid(row=7, column=1, padx=5, pady=5)
         ctk.CTkButton(self.settings_tab, text="Browse", command=self.browse_db).grid(row=7, column=2, padx=5, pady=5)
+
+        ctk.CTkLabel(self.settings_tab, text="Business Start (HH:MM):").grid(row=8, column=0, padx=5, pady=5)
+        self.business_start_var = ctk.StringVar(value=time_utils.BUSINESS_START.strftime("%H:%M"))
+        ctk.CTkEntry(self.settings_tab, textvariable=self.business_start_var, width=80).grid(row=8, column=1, padx=5, pady=5)
+        ctk.CTkLabel(self.settings_tab, text="Business End (HH:MM):").grid(row=9, column=0, padx=5, pady=5)
+        self.business_end_var = ctk.StringVar(value=time_utils.BUSINESS_END.strftime("%H:%M"))
+        ctk.CTkEntry(self.settings_tab, textvariable=self.business_end_var, width=80).grid(row=9, column=1, padx=5, pady=5)
+        ctk.CTkButton(self.settings_tab, text="Set Hours", command=self.update_business_hours).grid(row=10, column=0, columnspan=2, pady=10)
 
         # Orders Tab
         self.search_var = ctk.StringVar()
@@ -137,6 +152,7 @@ class OrderScraperApp:
 
         ctk.CTkButton(self.orders_tab, text="Export Report", command=self.export_selected).pack(pady=5)
         ctk.CTkButton(self.orders_tab, text="Export Date Range", command=self.export_date_range).pack(pady=5)
+        ctk.CTkButton(self.orders_tab, text="Show Breakdown", command=self.show_breakdown).pack(pady=5)
         ctk.CTkButton(self.orders_tab, text="Refresh Orders", command=self.get_orders).pack(pady=5)
 
         self.orders_tree.bind("<<TreeviewSelect>>", self.show_report)
@@ -481,10 +497,59 @@ class OrderScraperApp:
             self.get_orders()
         self.schedule_auto_refresh()
 
+    def load_config(self):
+        try:
+            with open(CONFIG_FILE, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except Exception:
+            return {}
+
+    def save_config(self):
+        try:
+            with open(CONFIG_FILE, "w", encoding="utf-8") as f:
+                json.dump(self.config, f)
+        except Exception:
+            pass
+
+    def update_business_hours(self):
+        try:
+            start = datetime.strptime(self.business_start_var.get().strip(), "%H:%M").time()
+            end = datetime.strptime(self.business_end_var.get().strip(), "%H:%M").time()
+        except ValueError:
+            messagebox.showerror("Business Hours", "Invalid time format")
+            return
+        if start >= end:
+            messagebox.showerror("Business Hours", "Start must be before end")
+            return
+        time_utils.BUSINESS_START = start
+        time_utils.BUSINESS_END = end
+        messagebox.showinfo("Business Hours", "Business hours updated")
+
+    def show_breakdown(self):
+        selected = self.orders_tree.focus()
+        if not selected:
+            messagebox.showerror("Breakdown", "No order selected")
+            return
+        order_number = self.orders_tree.item(selected, "values")[0]
+        start, end = self.get_date_range()
+        steps = self.load_steps(order_number)
+        lines = []
+        for (name, s), (next_name, e) in zip(steps, steps[1:]):
+            if not s or not e:
+                continue
+            segments = business_hours_breakdown(s, e)
+            if segments:
+                lines.append(f"{next_name}:")
+                for seg_start, seg_end in segments:
+                    hours = (seg_end - seg_start).total_seconds() / 3600.0
+                    lines.append(f"  {seg_start} -> {seg_end} ({hours:.2f}h)")
+        messagebox.showinfo("Breakdown", "\n".join(lines) if lines else "No breakdown data")
+
     def browse_db(self):
         path = filedialog.asksaveasfilename(
             defaultextension=".db",
             filetypes=[("SQLite DB", "*.db"), ("All Files", "*")],
+            initialdir=self.last_db_dir,
         )
         if path:
             self.connect_db(path)
@@ -496,6 +561,9 @@ class OrderScraperApp:
             except Exception:
                 pass
         self.db_path_var.set(path)
+        self.config["db_path"] = path
+        self.last_db_dir = os.path.dirname(path) or os.getcwd()
+        self.save_config()
         self.db = sqlite3.connect(path)
         cur = self.db.cursor()
         cur.execute(

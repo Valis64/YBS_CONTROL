@@ -1,9 +1,11 @@
 import unittest
 from unittest.mock import MagicMock, patch
 import requests
+import os
 
 from YBS_CONTROL import OrderScraperApp
-from datetime import datetime
+from datetime import datetime, time
+import time_utils
 
 
 class SimpleVar:
@@ -32,6 +34,9 @@ class YBSControlTests(unittest.TestCase):
         self.app.log_order = MagicMock()
         self.app.refresh_database_tab = MagicMock()
         self.app.order_rows = []
+        self.app.config = {}
+        self.app.save_config = MagicMock()
+        self.app.last_db_dir = ""
 
     @patch("YBS_CONTROL.messagebox")
     def test_login_request_exception(self, mock_messagebox):
@@ -109,6 +114,32 @@ class YBSControlTests(unittest.TestCase):
         self.app.db = MagicMock()
         OrderScraperApp.connect_db(self.app, r"\\server\share\orders.db")
         mock_connect.assert_called_with(r"\\server\share\orders.db")
+        self.assertEqual(self.app.config["db_path"], r"\\server\share\orders.db")
+        expected_dir = os.path.dirname(r"\\server\share\orders.db") or os.getcwd()
+        self.assertEqual(self.app.last_db_dir, expected_dir)
+        self.app.save_config.assert_called_once()
+
+    @patch("YBS_CONTROL.messagebox")
+    def test_update_business_hours_valid(self, mock_messagebox):
+        self.app.business_start_var = SimpleVar("09:00")
+        self.app.business_end_var = SimpleVar("17:00")
+        OrderScraperApp.update_business_hours(self.app)
+        self.assertEqual(time_utils.BUSINESS_START, time(9, 0))
+        self.assertEqual(time_utils.BUSINESS_END, time(17, 0))
+        mock_messagebox.showinfo.assert_called_once()
+        # reset defaults
+        time_utils.BUSINESS_START = time(8, 0)
+        time_utils.BUSINESS_END = time(16, 30)
+
+    @patch("YBS_CONTROL.filedialog.asksaveasfilename", return_value="/tmp/orders.db")
+    def test_browse_db_uses_last_directory(self, mock_dialog):
+        self.app.last_db_dir = "/tmp"
+        self.app.connect_db = MagicMock()
+        OrderScraperApp.browse_db(self.app)
+        mock_dialog.assert_called_once()
+        args, kwargs = mock_dialog.call_args
+        self.assertEqual(kwargs.get("initialdir"), "/tmp")
+        self.app.connect_db.assert_called_with("/tmp/orders.db")
 
 
 if __name__ == "__main__":
