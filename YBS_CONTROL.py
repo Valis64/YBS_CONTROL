@@ -37,12 +37,20 @@ ORDERS_URL = "https://www.ybsnow.com/manage.html"
 CONFIG_FILE = os.path.expanduser("~/.ybs_control_config.json")
 
 class OrderScraperApp:
-    def __init__(self, root):
+    def __init__(
+        self,
+        root,
+        session=None,
+        username="",
+        password="",
+        login_url=LOGIN_URL,
+        orders_url=ORDERS_URL,
+    ):
         self.root = root
         self.root.title("Order Scraper")
 
-        self.session = requests.Session()
-        self.logged_in = False
+        self.session = session or requests.Session()
+        self.logged_in = session is not None
 
         self.config = self.load_config()
 
@@ -67,10 +75,10 @@ class OrderScraperApp:
 
         self.order_rows = []
 
-        self.username_var = ctk.StringVar()
-        self.password_var = ctk.StringVar()
-        self.login_url_var = ctk.StringVar(value=LOGIN_URL)
-        self.orders_url_var = ctk.StringVar(value=ORDERS_URL)
+        self.username_var = ctk.StringVar(value=username)
+        self.password_var = ctk.StringVar(value=password)
+        self.login_url_var = ctk.StringVar(value=login_url)
+        self.orders_url_var = ctk.StringVar(value=orders_url)
         self.refresh_interval_var = ctk.IntVar(value=5)
         self.auto_refresh_job = None
         # export configuration
@@ -98,50 +106,40 @@ class OrderScraperApp:
         self.tab_control.pack(expand=1, fill="both")
 
         # Settings Tab
-        ctk.CTkLabel(self.settings_tab, text="Username:").grid(row=0, column=0, padx=5, pady=5)
-        ctk.CTkEntry(self.settings_tab, textvariable=self.username_var).grid(row=0, column=1, padx=5, pady=5)
-        ctk.CTkLabel(self.settings_tab, text="Password:").grid(row=1, column=0, padx=5, pady=5)
-        ctk.CTkEntry(self.settings_tab, textvariable=self.password_var, show='*').grid(row=1, column=1, padx=5, pady=5)
-        ctk.CTkLabel(self.settings_tab, text="Login URL:").grid(row=2, column=0, padx=5, pady=5)
-        ctk.CTkEntry(self.settings_tab, textvariable=self.login_url_var).grid(row=2, column=1, padx=5, pady=5)
-        ctk.CTkLabel(self.settings_tab, text="Orders URL:").grid(row=3, column=0, padx=5, pady=5)
-        ctk.CTkEntry(self.settings_tab, textvariable=self.orders_url_var).grid(row=3, column=1, padx=5, pady=5)
-        ctk.CTkButton(self.settings_tab, text="Login", command=self.login).grid(row=4, column=0, columnspan=2, pady=10)
-
-        ctk.CTkLabel(self.settings_tab, text="Refresh interval (min):").grid(row=5, column=0, padx=5, pady=5)
+        ctk.CTkLabel(self.settings_tab, text="Refresh interval (min):").grid(row=0, column=0, padx=5, pady=5)
         self.refresh_entry = ctk.CTkEntry(
             self.settings_tab,
             textvariable=self.refresh_interval_var,
             state="disabled",
         )
-        self.refresh_entry.grid(row=5, column=1, padx=5, pady=5)
+        self.refresh_entry.grid(row=0, column=1, padx=5, pady=5)
         self.refresh_button = ctk.CTkButton(
             self.settings_tab,
             text="Set Interval",
             command=self.schedule_auto_refresh,
             state="disabled",
         )
-        self.refresh_button.grid(row=6, column=0, columnspan=2, pady=10)
+        self.refresh_button.grid(row=1, column=0, columnspan=2, pady=10)
 
-        ctk.CTkLabel(self.settings_tab, text="Database File:").grid(row=7, column=0, padx=5, pady=5)
-        ctk.CTkEntry(self.settings_tab, textvariable=self.db_path_var).grid(row=7, column=1, padx=5, pady=5)
-        ctk.CTkButton(self.settings_tab, text="Browse", command=self.browse_db).grid(row=7, column=2, padx=5, pady=5)
+        ctk.CTkLabel(self.settings_tab, text="Database File:").grid(row=2, column=0, padx=5, pady=5)
+        ctk.CTkEntry(self.settings_tab, textvariable=self.db_path_var).grid(row=2, column=1, padx=5, pady=5)
+        ctk.CTkButton(self.settings_tab, text="Browse", command=self.browse_db).grid(row=2, column=2, padx=5, pady=5)
 
-        ctk.CTkLabel(self.settings_tab, text="Business Start (HH:MM):").grid(row=8, column=0, padx=5, pady=5)
+        ctk.CTkLabel(self.settings_tab, text="Business Start (HH:MM):").grid(row=3, column=0, padx=5, pady=5)
         self.business_start_var = ctk.StringVar(value=time_utils.BUSINESS_START.strftime("%H:%M"))
-        ctk.CTkEntry(self.settings_tab, textvariable=self.business_start_var, width=80).grid(row=8, column=1, padx=5, pady=5)
-        ctk.CTkLabel(self.settings_tab, text="Business End (HH:MM):").grid(row=9, column=0, padx=5, pady=5)
+        ctk.CTkEntry(self.settings_tab, textvariable=self.business_start_var, width=80).grid(row=3, column=1, padx=5, pady=5)
+        ctk.CTkLabel(self.settings_tab, text="Business End (HH:MM):").grid(row=4, column=0, padx=5, pady=5)
         self.business_end_var = ctk.StringVar(value=time_utils.BUSINESS_END.strftime("%H:%M"))
-        ctk.CTkEntry(self.settings_tab, textvariable=self.business_end_var, width=80).grid(row=9, column=1, padx=5, pady=5)
-        ctk.CTkButton(self.settings_tab, text="Set Hours", command=self.update_business_hours).grid(row=10, column=0, columnspan=2, pady=10)
+        ctk.CTkEntry(self.settings_tab, textvariable=self.business_end_var, width=80).grid(row=4, column=1, padx=5, pady=5)
+        ctk.CTkButton(self.settings_tab, text="Set Hours", command=self.update_business_hours).grid(row=5, column=0, columnspan=2, pady=10)
 
-        ctk.CTkLabel(self.settings_tab, text="Export Path:").grid(row=11, column=0, padx=5, pady=5)
-        ctk.CTkEntry(self.settings_tab, textvariable=self.export_path_var).grid(row=11, column=1, padx=5, pady=5)
-        ctk.CTkButton(self.settings_tab, text="Browse", command=self.browse_export_path).grid(row=11, column=2, padx=5, pady=5)
+        ctk.CTkLabel(self.settings_tab, text="Export Path:").grid(row=6, column=0, padx=5, pady=5)
+        ctk.CTkEntry(self.settings_tab, textvariable=self.export_path_var).grid(row=6, column=1, padx=5, pady=5)
+        ctk.CTkButton(self.settings_tab, text="Browse", command=self.browse_export_path).grid(row=6, column=2, padx=5, pady=5)
 
-        ctk.CTkLabel(self.settings_tab, text="Export Time (HH:MM):").grid(row=12, column=0, padx=5, pady=5)
-        ctk.CTkEntry(self.settings_tab, textvariable=self.export_time_var, width=80).grid(row=12, column=1, padx=5, pady=5)
-        ctk.CTkButton(self.settings_tab, text="Set Export", command=self.update_export_settings).grid(row=13, column=0, columnspan=2, pady=10)
+        ctk.CTkLabel(self.settings_tab, text="Export Time (HH:MM):").grid(row=7, column=0, padx=5, pady=5)
+        ctk.CTkEntry(self.settings_tab, textvariable=self.export_time_var, width=80).grid(row=7, column=1, padx=5, pady=5)
+        ctk.CTkButton(self.settings_tab, text="Set Export", command=self.update_export_settings).grid(row=8, column=0, columnspan=2, pady=10)
 
         # Orders Tab
         self.search_var = ctk.StringVar()
@@ -283,6 +281,12 @@ class OrderScraperApp:
         # Relogin timer
         self.relogin_thread = threading.Thread(target=self.relogin_loop, daemon=True)
         self.relogin_thread.start()
+
+        if self.logged_in:
+            self.refresh_entry.configure(state="normal")
+            self.refresh_button.configure(state="normal")
+            self.schedule_auto_refresh()
+            self.get_orders()
 
     def login(self, silent=False):
         username = self.username_var.get()
@@ -994,6 +998,18 @@ class OrderScraperApp:
 if __name__ == "__main__":
     ctk.set_appearance_mode("dark")
     ctk.set_default_color_theme("dark-blue")
-    root = ctk.CTk()
-    app = OrderScraperApp(root)
-    root.mainloop()
+    from login_dialog import LoginDialog
+
+    login = LoginDialog()
+    login.mainloop()
+    if getattr(login, "authenticated", False):
+        root = ctk.CTk()
+        app = OrderScraperApp(
+            root,
+            session=login.session,
+            username=login.username_var.get(),
+            password=login.password_var.get(),
+            login_url=login.login_url_var.get(),
+            orders_url=login.orders_url_var.get(),
+        )
+        root.mainloop()
