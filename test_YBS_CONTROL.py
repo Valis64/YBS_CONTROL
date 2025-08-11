@@ -222,6 +222,20 @@ class YBSControlTests(unittest.TestCase):
         self.assertEqual(kwargs.get("initialdir"), "/tmp")
         self.app.connect_db.assert_called_with("/tmp/orders.db")
 
+    @patch("YBS_CONTROL.filedialog.askdirectory", return_value="/exports")
+    def test_browse_export_path_uses_last_directory(self, mock_dialog):
+        self.app.last_export_dir = "/tmp"
+        self.app.export_path_var = SimpleVar("")
+        self.app.config = {}
+        OrderScraperApp.browse_export_path(self.app)
+        mock_dialog.assert_called_once()
+        args, kwargs = mock_dialog.call_args
+        self.assertEqual(kwargs.get("initialdir"), "/tmp")
+        self.assertEqual(self.app.export_path_var.get(), "/exports")
+        self.assertEqual(self.app.last_export_dir, "/exports")
+        self.assertEqual(self.app.config["export_path"], "/exports")
+        self.app.save_config.assert_called_once()
+
     @patch("YBS_CONTROL.messagebox")
     def test_handle_login_response_triggers_get_orders_only_on_success(self, mock_messagebox):
         self.app.get_orders = MagicMock()
