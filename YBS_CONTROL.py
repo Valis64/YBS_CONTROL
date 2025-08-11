@@ -21,6 +21,8 @@ from production_report import (
     generate_production_report,
     export_to_csv,
     export_to_sheets,
+    _build_summary_table,
+    _build_detail_table,
 )
 
 logging.basicConfig(
@@ -273,6 +275,35 @@ class OrderScraperApp:
         ctk.CTkButton(
             self.production_tab, text="Run Report", command=self.run_production_report
         ).grid(row=4, column=0, columnspan=3, pady=10)
+
+        # Treeviews for displaying report data
+        self.production_tab.grid_rowconfigure(5, weight=1)
+        self.production_tab.grid_rowconfigure(6, weight=1)
+        self.production_tab.grid_columnconfigure(0, weight=1)
+        self.production_tab.grid_columnconfigure(1, weight=1)
+        self.production_tab.grid_columnconfigure(2, weight=1)
+
+        summary_frame = ctk.CTkFrame(self.production_tab)
+        summary_frame.grid(row=5, column=0, columnspan=3, sticky="nsew", padx=10, pady=10)
+        self.prod_summary_tree = ttk.Treeview(summary_frame, show="headings")
+        self.prod_summary_tree.configure(style="Report.Treeview")
+        self.prod_summary_tree.pack(side="left", expand=1, fill="both")
+        sum_scroll = ttk.Scrollbar(summary_frame, orient="vertical", command=self.prod_summary_tree.yview)
+        self.prod_summary_tree.configure(yscrollcommand=sum_scroll.set)
+        sum_scroll.pack(side="right", fill="y")
+
+        detail_frame = ctk.CTkFrame(self.production_tab)
+        detail_frame.grid(row=6, column=0, columnspan=3, sticky="nsew", padx=10, pady=10)
+        self.prod_detail_tree = ttk.Treeview(detail_frame, show="headings")
+        self.prod_detail_tree.configure(style="Report.Treeview")
+        self.prod_detail_tree.pack(side="left", expand=1, fill="both")
+        det_scroll = ttk.Scrollbar(detail_frame, orient="vertical", command=self.prod_detail_tree.yview)
+        self.prod_detail_tree.configure(yscrollcommand=det_scroll.set)
+        det_scroll.pack(side="right", fill="y")
+
+        ctk.CTkButton(
+            self.production_tab, text="Export Report", command=self.export_production_report
+        ).grid(row=7, column=0, columnspan=3, pady=5)
         self.update_destination_input(self.dest_type_var.get())
 
         self.refresh_database_tab()
@@ -888,11 +919,9 @@ class OrderScraperApp:
         return events
 
     def run_production_report(self):
-        """Generate and export a production report based on user settings."""
+        """Generate a production report and display it in the GUI."""
         start_str = self.prod_start_var.get().strip()
         end_str = self.prod_end_var.get().strip()
-        dest = self.dest_type_var.get()
-        target = self.dest_value_var.get().strip()
         if not start_str or not end_str:
             messagebox.showerror("Production Report", "Start and end dates are required")
             return
@@ -905,9 +934,7 @@ class OrderScraperApp:
         if end_dt < start_dt:
             messagebox.showerror("Production Report", "End date must be after start date")
             return
-        if not target:
-            messagebox.showerror("Production Report", "Destination is required")
-            return
+
         end_excl = end_dt + timedelta(days=1)
         events = self.load_production_events(start_dt, end_excl)
         if not events:
@@ -919,6 +946,41 @@ class OrderScraperApp:
             )
         except Exception as e:
             messagebox.showerror("Production Report", f"Failed to generate: {e}")
+            return
+
+        # Save report for optional export
+        self.production_report_data = report
+
+        # Populate summary table
+        headers, rows = _build_summary_table(report)
+        self.prod_summary_tree.delete(*self.prod_summary_tree.get_children())
+        self.prod_summary_tree["columns"] = headers
+        for h in headers:
+            self.prod_summary_tree.heading(h, text=h)
+            self.prod_summary_tree.column(h, width=100)
+        for row in rows:
+            self.prod_summary_tree.insert("", "end", values=row)
+
+        # Populate detail table
+        d_headers, d_rows = _build_detail_table(report)
+        self.prod_detail_tree.delete(*self.prod_detail_tree.get_children())
+        self.prod_detail_tree["columns"] = d_headers
+        for h in d_headers:
+            self.prod_detail_tree.heading(h, text=h)
+            self.prod_detail_tree.column(h, width=120)
+        for row in d_rows:
+            self.prod_detail_tree.insert("", "end", values=row)
+
+    def export_production_report(self):
+        """Export the last generated production report to the selected destination."""
+        report = getattr(self, "production_report_data", None)
+        if not report:
+            messagebox.showerror("Production Report", "Run report before exporting")
+            return
+        dest = self.dest_type_var.get()
+        target = self.dest_value_var.get().strip()
+        if not target:
+            messagebox.showerror("Production Report", "Destination is required")
             return
         try:
             if dest == "CSV":
