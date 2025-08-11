@@ -177,7 +177,7 @@ class OrderScraperApp:
         self.relogin_thread = threading.Thread(target=self.relogin_loop, daemon=True)
         self.relogin_thread.start()
 
-    def login(self):
+    def login(self, silent=False):
         username = self.username_var.get()
         password = self.password_var.get()
         # The login form uses "email" and a hidden "action" field set to
@@ -194,26 +194,28 @@ class OrderScraperApp:
             try:
                 resp = self.session.post(login_url, data=data, timeout=10)
             except requests.RequestException as e:
-                if hasattr(self, "root") and self.root:
-                    self.root.after(0, lambda: messagebox.showerror("Login", f"Login request failed: {e}"))
-                else:
-                    messagebox.showerror("Login", f"Login request failed: {e}")
+                if not silent:
+                    if hasattr(self, "root") and self.root:
+                        self.root.after(0, lambda: messagebox.showerror("Login", f"Login request failed: {e}"))
+                    else:
+                        messagebox.showerror("Login", f"Login request failed: {e}")
                 return
             if hasattr(self, "root") and self.root:
-                self.root.after(0, lambda: self._handle_login_response(resp))
+                self.root.after(0, lambda: self._handle_login_response(resp, silent))
             else:
-                self._handle_login_response(resp)
+                self._handle_login_response(resp, silent)
 
         thread = threading.Thread(target=worker, daemon=True)
         thread.start()
         if not hasattr(self, "root") or not self.root:
             thread.join()
 
-    def _handle_login_response(self, resp):
+    def _handle_login_response(self, resp, silent=False):
         orders_page = os.path.basename(self.orders_url_var.get() or ORDERS_URL).lower()
         if "logout" in resp.text.lower() or orders_page in resp.text.lower():
             self.logged_in = True
-            messagebox.showinfo("Login", "Login successful!")
+            if not silent:
+                messagebox.showinfo("Login", "Login successful!")
             try:
                 self.tab_control.set("Orders")
             except Exception:
@@ -223,7 +225,8 @@ class OrderScraperApp:
             self.schedule_auto_refresh()
         else:
             self.logged_in = False
-            messagebox.showerror("Login", "Login failed.")
+            if not silent:
+                messagebox.showerror("Login", "Login failed.")
         if self.logged_in:
             self.get_orders()
 
@@ -621,7 +624,7 @@ class OrderScraperApp:
             time.sleep(2*60*60)  # 2 hours
             if self.logged_in:
                 print("Relogging in...")
-                self.root.after(0, self.login)
+                self.root.after(0, lambda: self.login(silent=True))
 
 if __name__ == "__main__":
     ctk.set_appearance_mode("dark")
