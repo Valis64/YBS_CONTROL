@@ -4,6 +4,7 @@ import requests
 import os
 
 from YBS_CONTROL import OrderScraperApp
+from login_dialog import LoginDialog
 from datetime import datetime, time
 import time_utils
 
@@ -17,6 +18,33 @@ class SimpleVar:
 
     def set(self, value):
         self.value = value
+
+
+class LoginDialogTests(unittest.TestCase):
+    def setUp(self):
+        self.dialog = LoginDialog.__new__(LoginDialog)
+        self.dialog.session = MagicMock()
+        self.dialog.username_var = SimpleVar("user")
+        self.dialog.password_var = SimpleVar("pass")
+        self.dialog.login_url_var = SimpleVar("http://example.com/login")
+        self.dialog.orders_url_var = SimpleVar("http://example.com/orders")
+
+    @patch("login_dialog.messagebox")
+    def test_login_request_exception(self, mock_messagebox):
+        self.dialog.session.post.side_effect = requests.Timeout("boom")
+        self.dialog.login()
+        self.dialog.session.post.assert_called_with(
+            "http://example.com/login",
+            data={"email": "user", "password": "pass", "action": "signin"},
+            timeout=10,
+        )
+        mock_messagebox.showerror.assert_called_once()
+
+    @patch("login_dialog.messagebox")
+    def test_login_request_exception_silent(self, mock_messagebox):
+        self.dialog.session.post.side_effect = requests.Timeout("boom")
+        self.dialog.login(silent=True)
+        mock_messagebox.showerror.assert_not_called()
 
 
 class YBSControlTests(unittest.TestCase):
@@ -43,27 +71,6 @@ class YBSControlTests(unittest.TestCase):
         # bind methods added after object creation
         self.app._run_scheduled_export = OrderScraperApp._run_scheduled_export.__get__(self.app)
         self.app.run_production_report = OrderScraperApp.run_production_report.__get__(self.app)
-
-    @patch("YBS_CONTROL.messagebox")
-    def test_login_request_exception(self, mock_messagebox):
-        self.app.get_orders = MagicMock()
-        self.app.session.post.side_effect = requests.Timeout("boom")
-        self.app.login()
-        self.app.session.post.assert_called_with(
-            "http://example.com/login",
-            data={"email": "user", "password": "pass", "action": "signin"},
-            timeout=10,
-        )
-        mock_messagebox.showerror.assert_called_once()
-        self.app.get_orders.assert_not_called()
-
-    @patch("YBS_CONTROL.messagebox")
-    def test_login_request_exception_silent(self, mock_messagebox):
-        self.app.get_orders = MagicMock()
-        self.app.session.post.side_effect = requests.Timeout("boom")
-        self.app.login(silent=True)
-        mock_messagebox.showerror.assert_not_called()
-        self.app.get_orders.assert_not_called()
 
     @patch("YBS_CONTROL.messagebox")
     def test_get_orders_request_exception(self, mock_messagebox):
@@ -211,7 +218,7 @@ class YBSControlTests(unittest.TestCase):
     ):
         mock_thread.return_value = MagicMock(start=MagicMock())
         root = MagicMock()
-        app = OrderScraperApp(root)
+        app = OrderScraperApp(root, session=MagicMock())
         self.assertEqual(app.business_start_var.get(), "09:00")
         self.assertEqual(app.business_end_var.get(), "17:00")
         self.assertEqual(time_utils.BUSINESS_START, time(9, 0))
