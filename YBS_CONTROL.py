@@ -21,6 +21,8 @@ from production_report import (
     generate_production_report,
     export_to_csv,
     export_to_sheets,
+    _build_summary_table,
+    _build_detail_table,
 )
 
 logging.basicConfig(
@@ -94,6 +96,22 @@ class OrderScraperApp:
         self.dest_type_var = ctk.StringVar(value="CSV")
         self.dest_value_var = ctk.StringVar()
         self.dest_label_var = ctk.StringVar(value="Output Directory:")
+        self.prod_filter_var = ctk.StringVar()
+        self.prod_summary_headers = []
+        self.prod_summary_rows = []
+        self.prod_detail_headers = []
+        self.prod_detail_rows = []
+        self.filtered_prod_detail_rows = []
+
+        # date range report configuration
+        self.range_start_var = ctk.StringVar()
+        self.range_end_var = ctk.StringVar()
+        self.range_filter_var = ctk.StringVar()
+        self.range_total_jobs_var = ctk.StringVar(value="0")
+        self.range_total_hours_var = ctk.StringVar(value="0.00")
+        self.range_avg_hours_var = ctk.StringVar(value="0.00")
+        self.date_range_rows = []
+        self.filtered_date_range_rows = []
 
         # Tabs
         self.tab_control = ctk.CTkTabview(root)
@@ -103,6 +121,8 @@ class OrderScraperApp:
         self.database_tab = self.tab_control.add("Database")
         # production report tab
         self.production_tab = self.tab_control.add("Production Report")
+        # date range report tab
+        self.date_range_tab = self.tab_control.add("Date Range Report")
         self.tab_control.pack(expand=1, fill="both")
 
         # Settings Tab
@@ -273,7 +293,114 @@ class OrderScraperApp:
         ctk.CTkButton(
             self.production_tab, text="Run Report", command=self.run_production_report
         ).grid(row=4, column=0, columnspan=3, pady=10)
+        ctk.CTkLabel(self.production_tab, text="Filter:").grid(row=5, column=0, padx=5, pady=5)
+        p_filter = ctk.CTkEntry(self.production_tab, textvariable=self.prod_filter_var)
+        p_filter.grid(row=5, column=1, columnspan=2, sticky="ew", padx=5, pady=5)
+        self.prod_filter_var.trace_add("write", lambda *args: self.filter_production_detail_rows())
+
+        # Treeviews for displaying report data
+        self.production_tab.grid_rowconfigure(6, weight=1)
+        self.production_tab.grid_rowconfigure(7, weight=1)
+        self.production_tab.grid_columnconfigure(0, weight=1)
+        self.production_tab.grid_columnconfigure(1, weight=1)
+        self.production_tab.grid_columnconfigure(2, weight=1)
+
+        summary_frame = ctk.CTkFrame(self.production_tab)
+        summary_frame.grid(row=6, column=0, columnspan=3, sticky="nsew", padx=10, pady=10)
+        self.prod_summary_tree = ttk.Treeview(summary_frame, show="headings")
+        self.prod_summary_tree.configure(style="Report.Treeview")
+        self.prod_summary_tree.pack(side="left", expand=1, fill="both")
+        sum_scroll = ttk.Scrollbar(summary_frame, orient="vertical", command=self.prod_summary_tree.yview)
+        self.prod_summary_tree.configure(yscrollcommand=sum_scroll.set)
+        sum_scroll.pack(side="right", fill="y")
+        self.prod_summary_tree.tag_configure("even", background="#ffffff")
+        self.prod_summary_tree.tag_configure("odd", background="#f0f0ff")
+
+        detail_frame = ctk.CTkFrame(self.production_tab)
+        detail_frame.grid(row=7, column=0, columnspan=3, sticky="nsew", padx=10, pady=10)
+        self.prod_detail_tree = ttk.Treeview(detail_frame, show="headings")
+        self.prod_detail_tree.configure(style="Report.Treeview")
+        self.prod_detail_tree.pack(side="left", expand=1, fill="both")
+        det_scroll = ttk.Scrollbar(detail_frame, orient="vertical", command=self.prod_detail_tree.yview)
+        self.prod_detail_tree.configure(yscrollcommand=det_scroll.set)
+        det_scroll.pack(side="right", fill="y")
+        self.prod_detail_tree.tag_configure("even", background="#ffffff")
+        self.prod_detail_tree.tag_configure("odd", background="#f0f0ff")
+
+        ctk.CTkButton(
+            self.production_tab, text="Export Report", command=self.export_production_report
+        ).grid(row=8, column=0, columnspan=3, pady=5)
         self.update_destination_input(self.dest_type_var.get())
+
+        # Date Range Report tab view
+        control_frame = ctk.CTkFrame(self.date_range_tab)
+        control_frame.grid(row=0, column=0, columnspan=6, sticky="ew", padx=10, pady=5)
+        ctk.CTkLabel(control_frame, text="Start Date:").grid(row=0, column=0, padx=5, pady=5)
+        DateEntry(control_frame, textvariable=self.range_start_var, width=12, date_pattern="yyyy-mm-dd").grid(
+            row=0, column=1, padx=5, pady=5
+        )
+        ctk.CTkLabel(control_frame, text="End Date:").grid(row=0, column=2, padx=5, pady=5)
+        DateEntry(control_frame, textvariable=self.range_end_var, width=12, date_pattern="yyyy-mm-dd").grid(
+            row=0, column=3, padx=5, pady=5
+        )
+        ctk.CTkButton(control_frame, text="Generate Report", command=self.run_date_range_report).grid(
+            row=0, column=4, padx=5, pady=5
+        )
+        ctk.CTkButton(control_frame, text="Clear", command=self.clear_date_range_report).grid(
+            row=0, column=5, padx=5, pady=5
+        )
+
+        ctk.CTkLabel(control_frame, text="Filter:").grid(row=1, column=0, padx=5, pady=5)
+        filter_entry = ctk.CTkEntry(control_frame, textvariable=self.range_filter_var)
+        filter_entry.grid(row=1, column=1, columnspan=5, sticky="ew", padx=5, pady=5)
+        self.range_filter_var.trace_add("write", lambda *args: self.filter_date_range_rows())
+
+        self.date_range_tab.grid_rowconfigure(2, weight=1)
+        self.date_range_tab.grid_columnconfigure(0, weight=1)
+        table_frame = ctk.CTkFrame(self.date_range_tab)
+        table_frame.grid(row=2, column=0, columnspan=6, sticky="nsew", padx=10, pady=10)
+
+        columns = (
+            "order",
+            "customer",
+            "workstation",
+            "hours",
+            "status",
+            "start",
+            "end",
+        )
+        self.date_tree = ttk.Treeview(table_frame, columns=columns, show="headings")
+        headings = [
+            "Order ID",
+            "Customer Name",
+            "Workstation",
+            "Job Hours",
+            "Status",
+            "Date Started",
+            "Date Completed",
+        ]
+        for col, head in zip(columns, headings):
+            self.date_tree.heading(col, text=head, command=lambda c=col: self.sort_date_range_table(c))
+            self.date_tree.column(col, anchor="w")
+        self.date_tree.pack(side="left", expand=1, fill="both")
+        scroll = ttk.Scrollbar(table_frame, orient="vertical", command=self.date_tree.yview)
+        self.date_tree.configure(yscrollcommand=scroll.set)
+        scroll.pack(side="right", fill="y")
+
+        self.date_tree.tag_configure("even", background="#ffffff")
+        self.date_tree.tag_configure("odd", background="#f0f0ff")
+        self.date_tree.tag_configure("Completed", background="#d0ffd0")
+        self.date_tree.tag_configure("In Progress", background="#fff4b0")
+        self.date_tree.tag_configure("total", background="#e0e0e0", font=("Arial", 10, "bold"))
+
+        summary = ctk.CTkFrame(self.date_range_tab)
+        summary.grid(row=3, column=0, columnspan=6, sticky="ew", padx=10, pady=5)
+        ctk.CTkLabel(summary, text="Total Jobs:").grid(row=0, column=0, padx=5, pady=5)
+        ctk.CTkLabel(summary, textvariable=self.range_total_jobs_var).grid(row=0, column=1, padx=5, pady=5)
+        ctk.CTkLabel(summary, text="Total Hours:").grid(row=0, column=2, padx=5, pady=5)
+        ctk.CTkLabel(summary, textvariable=self.range_total_hours_var).grid(row=0, column=3, padx=5, pady=5)
+        ctk.CTkLabel(summary, text="Average Hours per Job:").grid(row=0, column=4, padx=5, pady=5)
+        ctk.CTkLabel(summary, textvariable=self.range_avg_hours_var).grid(row=0, column=5, padx=5, pady=5)
 
         self.refresh_database_tab()
         self.schedule_daily_export()
@@ -606,18 +733,20 @@ class OrderScraperApp:
         }
         self.save_config()
 
-    def get_date_range(self):
+    def get_date_range(self, start_var=None, end_var=None):
         """Return (start, end) datetimes from the entry fields or None."""
+        start_var = start_var or self.start_date_var
+        end_var = end_var or self.end_date_var
         start = None
         end = None
-        if self.start_date_var.get().strip():
+        if start_var.get().strip():
             try:
-                start = datetime.strptime(self.start_date_var.get().strip(), "%Y-%m-%d")
+                start = datetime.strptime(start_var.get().strip(), "%Y-%m-%d")
             except ValueError:
                 messagebox.showerror("Date", "Invalid start date format")
-        if self.end_date_var.get().strip():
+        if end_var.get().strip():
             try:
-                end = datetime.strptime(self.end_date_var.get().strip(), "%Y-%m-%d")
+                end = datetime.strptime(end_var.get().strip(), "%Y-%m-%d")
             except ValueError:
                 messagebox.showerror("Date", "Invalid end date format")
         if start and end and end < start:
@@ -888,11 +1017,9 @@ class OrderScraperApp:
         return events
 
     def run_production_report(self):
-        """Generate and export a production report based on user settings."""
+        """Generate a production report and display it in the GUI."""
         start_str = self.prod_start_var.get().strip()
         end_str = self.prod_end_var.get().strip()
-        dest = self.dest_type_var.get()
-        target = self.dest_value_var.get().strip()
         if not start_str or not end_str:
             messagebox.showerror("Production Report", "Start and end dates are required")
             return
@@ -905,9 +1032,7 @@ class OrderScraperApp:
         if end_dt < start_dt:
             messagebox.showerror("Production Report", "End date must be after start date")
             return
-        if not target:
-            messagebox.showerror("Production Report", "Destination is required")
-            return
+
         end_excl = end_dt + timedelta(days=1)
         events = self.load_production_events(start_dt, end_excl)
         if not events:
@@ -920,6 +1045,85 @@ class OrderScraperApp:
         except Exception as e:
             messagebox.showerror("Production Report", f"Failed to generate: {e}")
             return
+
+        # Save report for optional export
+        self.production_report_data = report
+        self.prod_filter_var.set("")
+
+        # Populate summary table and cache rows
+        headers, rows = _build_summary_table(report)
+        self.prod_summary_headers = headers
+        self.prod_summary_rows = rows
+        self.populate_prod_summary_tree(headers, rows)
+
+        # Populate detail table and cache rows
+        d_headers, d_rows = _build_detail_table(report)
+        self.prod_detail_headers = d_headers
+        self.prod_detail_rows = d_rows
+        self.filtered_prod_detail_rows = list(d_rows)
+        self.populate_prod_detail_tree(d_headers, d_rows)
+
+    def populate_prod_summary_tree(self, headers, rows):
+        """Fill the production summary treeview."""
+        self.prod_summary_tree.delete(*self.prod_summary_tree.get_children())
+        self.prod_summary_tree["columns"] = headers
+        for h in headers:
+            self.prod_summary_tree.heading(h, text=h, command=lambda c=h: self.sort_prod_summary(c))
+            self.prod_summary_tree.column(h, width=100, anchor="e")
+        for idx, row in enumerate(rows):
+            tag = "even" if idx % 2 == 0 else "odd"
+            self.prod_summary_tree.insert("", "end", values=row, tags=(tag,))
+
+    def populate_prod_detail_tree(self, headers, rows):
+        """Fill the production detail treeview."""
+        self.prod_detail_tree.delete(*self.prod_detail_tree.get_children())
+        self.prod_detail_tree["columns"] = headers
+        for h in headers:
+            self.prod_detail_tree.heading(h, text=h, command=lambda c=h: self.sort_prod_detail(c))
+            self.prod_detail_tree.column(h, width=120, anchor="w")
+        for idx, row in enumerate(rows):
+            tag = "even" if idx % 2 == 0 else "odd"
+            self.prod_detail_tree.insert("", "end", values=row, tags=(tag,))
+
+    def filter_production_detail_rows(self, *args):
+        term = self.prod_filter_var.get().lower()
+        if not term:
+            rows = self.prod_detail_rows
+        else:
+            rows = [r for r in self.prod_detail_rows if any(term in str(v).lower() for v in r)]
+        self.filtered_prod_detail_rows = rows
+        self.populate_prod_detail_tree(self.prod_detail_headers, rows)
+
+    def sort_prod_summary(self, column, reverse=False):
+        idx = self.prod_summary_headers.index(column)
+        self.prod_summary_rows.sort(key=lambda r: self._sort_key(r[idx]), reverse=reverse)
+        self.populate_prod_summary_tree(self.prod_summary_headers, self.prod_summary_rows)
+        self.prod_summary_tree.heading(column, command=lambda: self.sort_prod_summary(column, not reverse))
+
+    def sort_prod_detail(self, column, reverse=False):
+        idx = self.prod_detail_headers.index(column)
+        self.filtered_prod_detail_rows.sort(key=lambda r: self._sort_key(r[idx]), reverse=reverse)
+        self.populate_prod_detail_tree(self.prod_detail_headers, self.filtered_prod_detail_rows)
+        self.prod_detail_tree.heading(column, command=lambda: self.sort_prod_detail(column, not reverse))
+
+    @staticmethod
+    def _sort_key(val):
+        try:
+            return float(val)
+        except (ValueError, TypeError):
+            return val
+
+    def export_production_report(self):
+        """Export the last generated production report to the selected destination."""
+        report = getattr(self, "production_report_data", None)
+        if not report:
+            messagebox.showerror("Production Report", "Run report before exporting")
+            return
+        dest = self.dest_type_var.get()
+        target = self.dest_value_var.get().strip()
+        if not target:
+            messagebox.showerror("Production Report", "Destination is required")
+            return
         try:
             if dest == "CSV":
                 export_to_csv(report, target)
@@ -929,6 +1133,113 @@ class OrderScraperApp:
             messagebox.showerror("Production Report", f"Export failed: {e}")
             return
         messagebox.showinfo("Production Report", "Report exported successfully")
+
+    # Date Range Report helpers
+    def load_jobs_by_date_range(self, start, end):
+        """Fetch jobs within start/end dates from the database."""
+        cur = self.db.cursor()
+        query = (
+            "SELECT lt.order_number, COALESCE(o.company,''), lt.workstation, lt.hours, lt.start, lt.end "
+            "FROM lead_times lt LEFT JOIN orders o ON o.order_number = lt.order_number WHERE 1=1"
+        )
+        params = []
+        if start:
+            query += " AND lt.start >= ?"
+            params.append(start.isoformat(sep=" "))
+        if end:
+            end_excl = end + timedelta(days=1)
+            query += " AND lt.start < ?"
+            params.append(end_excl.isoformat(sep=" "))
+        cur.execute(query, params)
+        rows = []
+        for order, company, ws, hours, s, e in cur.fetchall():
+            status = "Completed" if e else "In Progress"
+            rows.append(
+                {
+                    "order": order,
+                    "customer": company,
+                    "workstation": ws,
+                    "hours": hours or 0.0,
+                    "status": status,
+                    "start": s.split(" ")[0] if s else "",
+                    "end": e.split(" ")[0] if e else "",
+                }
+            )
+        return rows
+
+    def populate_date_range_table(self, rows):
+        self.date_tree.delete(*self.date_tree.get_children())
+        total = 0.0
+        for idx, r in enumerate(rows):
+            tags = ["even" if idx % 2 == 0 else "odd", r["status"]]
+            values = (
+                r["order"],
+                r["customer"],
+                r["workstation"],
+                f"{r['hours']:.2f}",
+                r["status"],
+                r["start"],
+                r["end"],
+            )
+            self.date_tree.insert("", "end", values=values, tags=tags)
+            total += r["hours"]
+        self.date_tree.insert(
+            "",
+            "end",
+            values=("TOTAL", "", "", f"{total:.2f}", "", "", ""),
+            tags=("total",),
+        )
+
+    def update_date_range_summary(self, rows):
+        total_jobs = len(rows)
+        total_hours = sum(r["hours"] for r in rows)
+        avg = total_hours / total_jobs if total_jobs else 0.0
+        self.range_total_jobs_var.set(str(total_jobs))
+        self.range_total_hours_var.set(f"{total_hours:.2f}")
+        self.range_avg_hours_var.set(f"{avg:.2f}")
+
+    def run_date_range_report(self):
+        start, end = self.get_date_range(self.range_start_var, self.range_end_var)
+        if not start or not end:
+            messagebox.showerror("Date Range Report", "Start and end dates are required")
+            return
+        rows = self.load_jobs_by_date_range(start, end)
+        self.date_range_rows = rows
+        self.filtered_date_range_rows = list(rows)
+        self.populate_date_range_table(rows)
+        self.update_date_range_summary(rows)
+
+    def filter_date_range_rows(self, *args):
+        term = self.range_filter_var.get().lower()
+        if not term:
+            rows = self.date_range_rows
+        else:
+            rows = [
+                r
+                for r in self.date_range_rows
+                if any(term in str(v).lower() for v in r.values())
+            ]
+        self.filtered_date_range_rows = rows
+        self.populate_date_range_table(rows)
+        self.update_date_range_summary(rows)
+
+    def sort_date_range_table(self, column, reverse=False):
+        key = column
+        self.filtered_date_range_rows.sort(key=lambda r: r[key], reverse=reverse)
+        self.populate_date_range_table(self.filtered_date_range_rows)
+        self.update_date_range_summary(self.filtered_date_range_rows)
+        self.date_tree.heading(
+            column, command=lambda: self.sort_date_range_table(column, not reverse)
+        )
+
+    def clear_date_range_report(self):
+        self.range_start_var.set("")
+        self.range_end_var.set("")
+        self.range_filter_var.set("")
+        self.date_range_rows = []
+        self.filtered_date_range_rows = []
+        self.date_tree.delete(*self.date_tree.get_children())
+        self.update_date_range_summary([])
 
     def show_breakdown(self):
         selected = self.orders_tree.focus()
