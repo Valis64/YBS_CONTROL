@@ -154,3 +154,56 @@ python manage_html_report.py manage.html --output report.csv \
 
 This reads the workstation timestamps from the HTML table and produces the same style report.
 
+Date-Range Production Report
+----------------------------
+
+Use `production_report.py` to aggregate workstation hours for all jobs within a
+specific date range.  The script expects event records on **stdin** and requires
+the date range on the command line.
+
+Required inputs:
+
+* `--start` and `--end` in ISO‑8601 format (e.g. `2024-01-01T00:00:00Z`).
+* Event JSON containing `orderId`, `workstation`, `startTime` and `endTime`
+  keys. Times are clipped to the supplied range.
+
+Output options:
+
+* `--sheet-id` – write the report to a Google Sheet. This requires the
+  `gspread` package and API credentials for a service account with access to the
+  spreadsheet. Set the `GOOGLE_APPLICATION_CREDENTIALS` environment variable to
+  the path of the JSON key file and share the sheet with the service account
+  email.
+* `--csv-dir` – write `Summary.csv` and `Details.csv` to the specified
+  directory.
+
+Command-line usage:
+
+```bash
+python production_report.py --start 2024-01-01T00:00:00Z \
+    --end 2024-01-02T00:00:00Z --csv-dir reports < events.json
+
+python production_report.py --start 2024-01-01T00:00:00Z \
+    --end 2024-01-02T00:00:00Z --sheet-id SHEET_ID < events.json
+```
+
+Example event JSON:
+
+```json
+[
+  {
+    "orderId": "A123",
+    "workstation": "Print",
+    "startTime": "2024-01-01T09:00:00Z",
+    "endTime": "2024-01-01T11:30:00Z"
+  },
+  {
+    "orderId": "A123",
+    "workstation": "Cut",
+    "startTime": "2024-01-02T12:00:00Z",
+    "endTime": "2024-01-02T14:00:00Z"
+  }
+]
+```
+
+
