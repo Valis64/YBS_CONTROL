@@ -189,11 +189,27 @@ class OrderScraperApp:
             'action': 'signin',
         }
         login_url = self.login_url_var.get() or LOGIN_URL
-        try:
-            resp = self.session.post(login_url, data=data, timeout=10)
-        except requests.RequestException as e:
-            messagebox.showerror("Login", f"Login request failed: {e}")
-            return
+
+        def worker():
+            try:
+                resp = self.session.post(login_url, data=data, timeout=10)
+            except requests.RequestException as e:
+                if hasattr(self, "root") and self.root:
+                    self.root.after(0, lambda: messagebox.showerror("Login", f"Login request failed: {e}"))
+                else:
+                    messagebox.showerror("Login", f"Login request failed: {e}")
+                return
+            if hasattr(self, "root") and self.root:
+                self.root.after(0, lambda: self._handle_login_response(resp))
+            else:
+                self._handle_login_response(resp)
+
+        thread = threading.Thread(target=worker, daemon=True)
+        thread.start()
+        if not hasattr(self, "root") or not self.root:
+            thread.join()
+
+    def _handle_login_response(self, resp):
         orders_page = os.path.basename(self.orders_url_var.get() or ORDERS_URL).lower()
         if "logout" in resp.text.lower() or orders_page in resp.text.lower():
             self.logged_in = True
@@ -215,12 +231,28 @@ class OrderScraperApp:
             messagebox.showerror("Error", "Not logged in!")
             return
         orders_url = self.orders_url_var.get() or ORDERS_URL
-        try:
-            resp = self.session.get(orders_url, timeout=10)
-        except requests.RequestException as e:
-            messagebox.showerror("Error", f"Failed to fetch orders: {e}")
-            return
-        soup = BeautifulSoup(resp.text, 'html.parser')
+
+        def worker():
+            try:
+                resp = self.session.get(orders_url, timeout=10)
+            except requests.RequestException as e:
+                if hasattr(self, "root") and self.root:
+                    self.root.after(0, lambda: messagebox.showerror("Error", f"Failed to fetch orders: {e}"))
+                else:
+                    messagebox.showerror("Error", f"Failed to fetch orders: {e}")
+                return
+            if hasattr(self, "root") and self.root:
+                self.root.after(0, lambda: self._process_orders_html(resp.text))
+            else:
+                self._process_orders_html(resp.text)
+
+        thread = threading.Thread(target=worker, daemon=True)
+        thread.start()
+        if not hasattr(self, "root") or not self.root:
+            thread.join()
+
+    def _process_orders_html(self, html):
+        soup = BeautifulSoup(html, 'html.parser')
         tbody = soup.find('tbody', id='table')
         self.orders_tree.delete(*self.orders_tree.get_children())
         self.order_rows = []
