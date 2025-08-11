@@ -1,5 +1,5 @@
 import customtkinter as ctk
-from tkinter import ttk, messagebox
+from tkinter import ttk, messagebox, filedialog
 import threading
 import requests
 from bs4 import BeautifulSoup
@@ -26,18 +26,8 @@ class OrderScraperApp:
         self.session = requests.Session()
         self.logged_in = False
 
-        self.db = sqlite3.connect("orders.db")
-        cur = self.db.cursor()
-        cur.execute(
-            "CREATE TABLE IF NOT EXISTS orders (order_number TEXT PRIMARY KEY, company TEXT)"
-        )
-        cur.execute(
-            "CREATE TABLE IF NOT EXISTS steps (order_number TEXT, step TEXT, timestamp TEXT)"
-        )
-        cur.execute(
-            "CREATE TABLE IF NOT EXISTS lead_times (order_number TEXT, workstation TEXT, start TEXT, end TEXT, hours REAL)"
-        )
-        self.db.commit()
+        self.db_path_var = ctk.StringVar(value="orders.db")
+        self.connect_db(self.db_path_var.get())
 
         self.order_rows = []
 
@@ -81,6 +71,10 @@ class OrderScraperApp:
             state="disabled",
         )
         self.refresh_button.grid(row=6, column=0, columnspan=2, pady=10)
+
+        ctk.CTkLabel(self.settings_tab, text="Database File:").grid(row=7, column=0, padx=5, pady=5)
+        ctk.CTkEntry(self.settings_tab, textvariable=self.db_path_var).grid(row=7, column=1, padx=5, pady=5)
+        ctk.CTkButton(self.settings_tab, text="Browse", command=self.browse_db).grid(row=7, column=2, padx=5, pady=5)
 
         # Orders Tab
         self.search_var = ctk.StringVar()
@@ -486,6 +480,34 @@ class OrderScraperApp:
         if self.logged_in:
             self.get_orders()
         self.schedule_auto_refresh()
+
+    def browse_db(self):
+        path = filedialog.asksaveasfilename(
+            defaultextension=".db",
+            filetypes=[("SQLite DB", "*.db"), ("All Files", "*")],
+        )
+        if path:
+            self.connect_db(path)
+
+    def connect_db(self, path):
+        if hasattr(self, "db") and self.db:
+            try:
+                self.db.close()
+            except Exception:
+                pass
+        self.db_path_var.set(path)
+        self.db = sqlite3.connect(path)
+        cur = self.db.cursor()
+        cur.execute(
+            "CREATE TABLE IF NOT EXISTS orders (order_number TEXT PRIMARY KEY, company TEXT)"
+        )
+        cur.execute(
+            "CREATE TABLE IF NOT EXISTS steps (order_number TEXT, step TEXT, timestamp TEXT)"
+        )
+        cur.execute(
+            "CREATE TABLE IF NOT EXISTS lead_times (order_number TEXT, workstation TEXT, start TEXT, end TEXT, hours REAL)"
+        )
+        self.db.commit()
 
     def refresh_database_tab(self):
         """Populate the Database tab with the Orders table contents."""
