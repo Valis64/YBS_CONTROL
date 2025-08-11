@@ -28,6 +28,7 @@ class YBSControlTests(unittest.TestCase):
         self.app.login_url_var = SimpleVar("http://example.com/login")
         self.app.orders_url_var = SimpleVar("http://example.com/orders")
         self.app.tab_control = MagicMock()
+        self.app.root = MagicMock()
         self.app.logged_in = True
         self.app.orders_tree = MagicMock()
         self.app.orders_tree.get_children.return_value = []
@@ -116,6 +117,37 @@ class YBSControlTests(unittest.TestCase):
         self.assertEqual(len(insert_calls), 3)
         self.assertEqual(insert_calls[0].kwargs["values"][0], "Cutting")
         self.assertEqual(insert_calls[1].kwargs["values"][0], "Welding")
+
+    @patch("YBS_CONTROL.business_hours_breakdown")
+    @patch("YBS_CONTROL.ctk.CTkToplevel")
+    @patch("YBS_CONTROL.ttk.Treeview")
+    @patch("YBS_CONTROL.messagebox.showinfo")
+    def test_show_breakdown_uses_table(
+        self, mock_showinfo, mock_treeview, mock_toplevel, mock_breakdown
+    ):
+        t1 = datetime(2024, 1, 1, 8, 0)
+        t2 = datetime(2024, 1, 1, 10, 0)
+        self.app.start_date_var = SimpleVar("")
+        self.app.end_date_var = SimpleVar("")
+        self.app.orders_tree.focus.return_value = "item1"
+        self.app.orders_tree.item.return_value = ("123",)
+        self.app.load_steps = MagicMock(return_value=[("Cutting", t1), ("Welding", t2)])
+        mock_breakdown.return_value = [(t1, t2)]
+        tree_instance = MagicMock()
+        mock_treeview.return_value = tree_instance
+
+        self.app.show_breakdown()
+
+        mock_toplevel.assert_called_once()
+        tree_instance.insert.assert_called_once()
+        args, kwargs = tree_instance.insert.call_args
+        self.assertEqual(kwargs["values"], (
+            "Welding",
+            t1.strftime("%Y-%m-%d %H:%M"),
+            t2.strftime("%Y-%m-%d %H:%M"),
+            "2.00",
+        ))
+        mock_showinfo.assert_not_called()
 
     @patch("YBS_CONTROL.sqlite3.connect")
     def test_connect_db_allows_network_path(self, mock_connect):
