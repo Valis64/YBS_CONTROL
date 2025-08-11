@@ -131,7 +131,7 @@ class YBSControlTests(unittest.TestCase):
         time_utils.BUSINESS_START = time(8, 0)
         time_utils.BUSINESS_END = time(16, 30)
 
-    @patch("YBS_CONTROL.filedialog.asksaveasfilename", return_value="/tmp/orders.db")
+    @patch("YBS_CONTROL.filedialog.askopenfilename", return_value="/tmp/orders.db")
     def test_browse_db_uses_last_directory(self, mock_dialog):
         self.app.last_db_dir = "/tmp"
         self.app.connect_db = MagicMock()
