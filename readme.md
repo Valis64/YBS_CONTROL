@@ -12,6 +12,8 @@ Refresh orders with a single click
 
 Automatic session relogin every 2 hours
 
+Automatically refreshes and stores order data every 5 minutes (configurable after login)
+
 Easily extendable for export (CSV, Excel, etc.)
 
 Specify custom Login and Orders URLs (handles .php or .html pages)
@@ -51,6 +53,8 @@ View Orders
 Switch to the “Orders” tab
 
 Click Refresh Orders to fetch and display the current orders table
+
+After logging in, the Orders database will refresh automatically every 5 minutes.  You can adjust this interval on the Settings tab once logged in.
 
 The tool will keep your session alive by automatically re-logging in every 2 hours in the background.
 
