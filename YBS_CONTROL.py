@@ -31,10 +31,25 @@ class OrderScraperApp:
         self.logged_in = False
 
         self.config = self.load_config()
+
+        # Configure database path from config
         db_path = self.config.get("db_path", "orders.db")
         self.db_path_var = ctk.StringVar(value=db_path)
         self.last_db_dir = os.path.dirname(db_path) or os.getcwd()
         self.connect_db(db_path)
+
+        # Load business hours from config if available
+        start_str = self.config.get("business_start")
+        end_str = self.config.get("business_end")
+        if start_str and end_str:
+            try:
+                start = datetime.strptime(start_str, "%H:%M").time()
+                end = datetime.strptime(end_str, "%H:%M").time()
+                if start < end:
+                    time_utils.BUSINESS_START = start
+                    time_utils.BUSINESS_END = end
+            except ValueError:
+                pass
 
         self.order_rows = []
 
@@ -559,6 +574,9 @@ class OrderScraperApp:
             return
         time_utils.BUSINESS_START = start
         time_utils.BUSINESS_END = end
+        self.config["business_start"] = start.strftime("%H:%M")
+        self.config["business_end"] = end.strftime("%H:%M")
+        self.save_config()
         messagebox.showinfo("Business Hours", "Business hours updated")
 
     def show_breakdown(self):

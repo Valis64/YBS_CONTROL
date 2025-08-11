@@ -131,10 +131,57 @@ class YBSControlTests(unittest.TestCase):
     def test_update_business_hours_valid(self, mock_messagebox):
         self.app.business_start_var = SimpleVar("09:00")
         self.app.business_end_var = SimpleVar("17:00")
+        self.app.save_config = MagicMock()
+        self.app.config = {}
         OrderScraperApp.update_business_hours(self.app)
         self.assertEqual(time_utils.BUSINESS_START, time(9, 0))
         self.assertEqual(time_utils.BUSINESS_END, time(17, 0))
+        self.assertEqual(self.app.config["business_start"], "09:00")
+        self.assertEqual(self.app.config["business_end"], "17:00")
+        self.app.save_config.assert_called_once()
         mock_messagebox.showinfo.assert_called_once()
+        # reset defaults
+        time_utils.BUSINESS_START = time(8, 0)
+        time_utils.BUSINESS_END = time(16, 30)
+
+    @patch("YBS_CONTROL.threading.Thread")
+    @patch("YBS_CONTROL.OrderScraperApp.refresh_database_tab")
+    @patch("YBS_CONTROL.OrderScraperApp.connect_db")
+    @patch("YBS_CONTROL.OrderScraperApp.load_config", return_value={"business_start": "09:00", "business_end": "17:00", "db_path": "orders.db"})
+    @patch("YBS_CONTROL.ttk.Style")
+    @patch("YBS_CONTROL.ttk.Scrollbar")
+    @patch("YBS_CONTROL.ttk.Treeview")
+    @patch("YBS_CONTROL.ctk.CTkFrame")
+    @patch("YBS_CONTROL.ctk.CTkButton")
+    @patch("YBS_CONTROL.ctk.CTkEntry")
+    @patch("YBS_CONTROL.ctk.CTkLabel")
+    @patch("YBS_CONTROL.ctk.CTkTabview")
+    @patch("YBS_CONTROL.ctk.IntVar", side_effect=lambda value=0: SimpleVar(value))
+    @patch("YBS_CONTROL.ctk.StringVar", side_effect=lambda value="": SimpleVar(value))
+    def test_init_uses_config_business_hours(
+        self,
+        mock_stringvar,
+        mock_intvar,
+        mock_tabview,
+        mock_label,
+        mock_entry,
+        mock_button,
+        mock_frame,
+        mock_treeview,
+        mock_scrollbar,
+        mock_style,
+        mock_load_config,
+        mock_connect_db,
+        mock_refresh_db,
+        mock_thread,
+    ):
+        mock_thread.return_value = MagicMock(start=MagicMock())
+        root = MagicMock()
+        app = OrderScraperApp(root)
+        self.assertEqual(app.business_start_var.get(), "09:00")
+        self.assertEqual(app.business_end_var.get(), "17:00")
+        self.assertEqual(time_utils.BUSINESS_START, time(9, 0))
+        self.assertEqual(time_utils.BUSINESS_END, time(17, 0))
         # reset defaults
         time_utils.BUSINESS_START = time(8, 0)
         time_utils.BUSINESS_END = time(16, 30)
