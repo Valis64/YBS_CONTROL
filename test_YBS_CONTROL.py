@@ -76,6 +76,21 @@ class YBSControlTests(unittest.TestCase):
         self.app._run_scheduled_export = OrderScraperApp._run_scheduled_export.__get__(self.app)
         self.app.run_production_report = OrderScraperApp.run_production_report.__get__(self.app)
         self.app.export_production_report = OrderScraperApp.export_production_report.__get__(self.app)
+        # date range report setup
+        self.app.range_start_var = SimpleVar("")
+        self.app.range_end_var = SimpleVar("")
+        self.app.range_filter_var = SimpleVar("")
+        self.app.range_total_jobs_var = SimpleVar("")
+        self.app.range_total_hours_var = SimpleVar("")
+        self.app.range_avg_hours_var = SimpleVar("")
+        self.app.date_tree = MagicMock()
+        self.app.date_tree.get_children.return_value = []
+        self.app.run_date_range_report = OrderScraperApp.run_date_range_report.__get__(self.app)
+        self.app.filter_date_range_rows = OrderScraperApp.filter_date_range_rows.__get__(self.app)
+        self.app.populate_date_range_table = OrderScraperApp.populate_date_range_table.__get__(self.app)
+        self.app.update_date_range_summary = OrderScraperApp.update_date_range_summary.__get__(self.app)
+        self.app.sort_date_range_table = OrderScraperApp.sort_date_range_table.__get__(self.app)
+        self.app.clear_date_range_report = OrderScraperApp.clear_date_range_report.__get__(self.app)
 
     @patch("YBS_CONTROL.messagebox")
     def test_get_orders_request_exception(self, mock_messagebox):
@@ -338,6 +353,42 @@ class YBSControlTests(unittest.TestCase):
         self.app.dest_value_var = SimpleVar("/tmp")
         self.app.run_production_report()
         mock_messagebox.showerror.assert_called_once()
+
+    @patch("YBS_CONTROL.messagebox")
+    def test_run_date_range_report_populates_table_and_summary(self, mock_messagebox):
+        self.app.range_start_var = SimpleVar("2024-01-01")
+        self.app.range_end_var = SimpleVar("2024-01-02")
+        rows = [
+            {
+                "order": "1",
+                "customer": "A",
+                "workstation": "WS1",
+                "hours": 2.0,
+                "status": "Completed",
+                "start": "2024-01-01",
+                "end": "2024-01-01",
+            },
+            {
+                "order": "2",
+                "customer": "B",
+                "workstation": "WS2",
+                "hours": 3.0,
+                "status": "In Progress",
+                "start": "2024-01-02",
+                "end": "",
+            },
+        ]
+        self.app.load_jobs_by_date_range = MagicMock(return_value=rows)
+        self.app.run_date_range_report()
+        insert_calls = self.app.date_tree.insert.call_args_list
+        self.assertEqual(len(insert_calls), 3)
+        self.assertEqual(
+            insert_calls[-1].kwargs["values"],
+            ("TOTAL", "", "", "5.00", "", "", ""),
+        )
+        self.assertEqual(self.app.range_total_jobs_var.get(), "2")
+        self.assertEqual(self.app.range_total_hours_var.get(), "5.00")
+        self.assertEqual(self.app.range_avg_hours_var.get(), "2.50")
 
 if __name__ == "__main__":
     unittest.main()
