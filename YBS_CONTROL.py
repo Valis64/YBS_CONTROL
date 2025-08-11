@@ -11,6 +11,8 @@ from datetime import datetime
 import json
 import logging
 
+from matplotlib.figure import Figure
+from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 from manage_html_report import compute_lead_times, write_report
 import time_utils
 from time_utils import business_hours_delta, business_hours_breakdown
@@ -70,6 +72,7 @@ class OrderScraperApp:
         self.tab_control = ctk.CTkTabview(root)
         self.settings_tab = self.tab_control.add("Settings")
         self.orders_tab = self.tab_control.add("Orders")
+        self.analytics_tab = self.tab_control.add("Analytics")
         # new tab for simple database access
         self.database_tab = self.tab_control.add("Database")
         self.tab_control.pack(expand=1, fill="both")
@@ -178,6 +181,25 @@ class OrderScraperApp:
 
         self.orders_tree.bind("<<TreeviewSelect>>", self.show_report)
         self.orders_tree.bind("<Double-1>", self.export_report)
+
+        # Analytics Tab
+        self.analytics_job_var = ctk.StringVar()
+        self.analytics_start_var = ctk.StringVar()
+        self.analytics_end_var = ctk.StringVar()
+        a_controls = ctk.CTkFrame(self.analytics_tab)
+        a_controls.pack(fill="x", padx=10, pady=5)
+        ctk.CTkLabel(a_controls, text="Job Filter:").pack(side="left", padx=5)
+        ctk.CTkEntry(a_controls, textvariable=self.analytics_job_var, width=120).pack(side="left", padx=5)
+        ctk.CTkLabel(a_controls, text="Start (YYYY-MM-DD):").pack(side="left", padx=5)
+        ctk.CTkEntry(a_controls, textvariable=self.analytics_start_var, width=100).pack(side="left", padx=5)
+        ctk.CTkLabel(a_controls, text="End (YYYY-MM-DD):").pack(side="left", padx=5)
+        ctk.CTkEntry(a_controls, textvariable=self.analytics_end_var, width=100).pack(side="left", padx=5)
+        ctk.CTkButton(a_controls, text="Update Chart", command=self.update_analytics_chart).pack(side="left", padx=5)
+
+        self.analytics_fig = Figure(figsize=(5, 4))
+        self.analytics_ax = self.analytics_fig.add_subplot(111)
+        self.analytics_canvas = FigureCanvasTkAgg(self.analytics_fig, master=self.analytics_tab)
+        self.analytics_canvas.get_tk_widget().pack(expand=1, fill="both")
 
         # Database Tab view
         self.db_tree = ttk.Treeview(
@@ -397,6 +419,43 @@ class OrderScraperApp:
             for r in cur.fetchall()
         ]
         return rows
+
+    def update_analytics_chart(self):
+        """Compute lead times for visible orders and update the bar chart."""
+        start = None
+        end = None
+        if self.analytics_start_var.get().strip():
+            try:
+                start = datetime.strptime(self.analytics_start_var.get().strip(), "%Y-%m-%d")
+            except ValueError:
+                messagebox.showerror("Date", "Invalid start date format")
+                return
+        if self.analytics_end_var.get().strip():
+            try:
+                end = datetime.strptime(self.analytics_end_var.get().strip(), "%Y-%m-%d")
+            except ValueError:
+                messagebox.showerror("Date", "Invalid end date format")
+                return
+        job_filter = self.analytics_job_var.get().strip()
+        jobs = {}
+        for row in self.order_rows:
+            order_number = str(row[0]) if isinstance(row, tuple) else str(row)
+            if job_filter and job_filter not in order_number:
+                continue
+            steps = self.load_steps(order_number)
+            jobs[order_number] = steps
+        results = compute_lead_times(jobs, start, end)
+        self.analytics_ax.clear()
+        totals = []
+        for job, steps in results.items():
+            total = sum(s["hours"] for s in steps)
+            totals.append((job, total))
+        if totals:
+            labels, hours = zip(*totals)
+            self.analytics_ax.bar(labels, hours)
+            self.analytics_ax.set_ylabel("Hours in queue")
+            self.analytics_ax.set_xlabel("Job")
+        self.analytics_canvas.draw()
 
     def get_date_range(self):
         """Return (start, end) datetimes from the entry fields or None."""

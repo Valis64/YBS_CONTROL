@@ -144,6 +144,21 @@ class YBSControlTests(unittest.TestCase):
         time_utils.BUSINESS_START = time(8, 0)
         time_utils.BUSINESS_END = time(16, 30)
 
+    @patch("YBS_CONTROL.compute_lead_times")
+    def test_update_analytics_chart_calls_compute(self, mock_compute):
+        self.app.analytics_ax = MagicMock()
+        self.app.analytics_canvas = MagicMock()
+        self.app.analytics_start_var = SimpleVar("")
+        self.app.analytics_end_var = SimpleVar("")
+        self.app.analytics_job_var = SimpleVar("")
+        self.app.order_rows = [("123", "ACME", "Running", "High")]
+        self.app.load_steps = MagicMock(return_value=[("Cutting", datetime(2024, 1, 1, 8, 0)), ("Welding", datetime(2024, 1, 1, 12, 0))])
+        mock_compute.return_value = {"123": [{"hours": 4, "step": "Welding"}]}
+        OrderScraperApp.update_analytics_chart(self.app)
+        mock_compute.assert_called_once()
+        self.app.analytics_ax.bar.assert_called_once()
+        self.app.analytics_canvas.draw.assert_called_once()
+
     @patch("YBS_CONTROL.threading.Thread")
     @patch("YBS_CONTROL.OrderScraperApp.refresh_database_tab")
     @patch("YBS_CONTROL.OrderScraperApp.connect_db")
@@ -151,6 +166,8 @@ class YBSControlTests(unittest.TestCase):
     @patch("YBS_CONTROL.ttk.Style")
     @patch("YBS_CONTROL.ttk.Scrollbar")
     @patch("YBS_CONTROL.ttk.Treeview")
+    @patch("YBS_CONTROL.FigureCanvasTkAgg")
+    @patch("YBS_CONTROL.Figure")
     @patch("YBS_CONTROL.ctk.CTkFrame")
     @patch("YBS_CONTROL.ctk.CTkButton")
     @patch("YBS_CONTROL.ctk.CTkEntry")
@@ -167,6 +184,8 @@ class YBSControlTests(unittest.TestCase):
         mock_entry,
         mock_button,
         mock_frame,
+        mock_figure,
+        mock_canvas,
         mock_treeview,
         mock_scrollbar,
         mock_style,
@@ -182,6 +201,8 @@ class YBSControlTests(unittest.TestCase):
         self.assertEqual(app.business_end_var.get(), "17:00")
         self.assertEqual(time_utils.BUSINESS_START, time(9, 0))
         self.assertEqual(time_utils.BUSINESS_END, time(17, 0))
+        tabs_added = [call.args[0] for call in mock_tabview.return_value.add.call_args_list]
+        self.assertIn("Analytics", tabs_added)
         # reset defaults
         time_utils.BUSINESS_START = time(8, 0)
         time_utils.BUSINESS_END = time(16, 30)
