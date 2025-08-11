@@ -588,7 +588,7 @@ class OrderScraperApp:
             time.sleep(2*60*60)  # 2 hours
             if self.logged_in:
                 print("Relogging in...")
-                self.login()
+                self.root.after(0, self.login)
 
 if __name__ == "__main__":
     ctk.set_appearance_mode("dark")
