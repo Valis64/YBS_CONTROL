@@ -90,14 +90,11 @@ class YBSControlTests(unittest.TestCase):
         # date range report setup
         self.app.range_start_var = SimpleVar("")
         self.app.range_end_var = SimpleVar("")
-        self.app.range_filter_var = SimpleVar("")
         self.app.range_total_jobs_var = SimpleVar("")
         self.app.range_total_hours_var = SimpleVar("")
-        self.app.range_avg_hours_var = SimpleVar("")
         self.app.date_tree = MagicMock()
         self.app.date_tree.get_children.return_value = []
         self.app.run_date_range_report = OrderScraperApp.run_date_range_report.__get__(self.app)
-        self.app.filter_date_range_rows = OrderScraperApp.filter_date_range_rows.__get__(self.app)
         self.app.populate_date_range_table = OrderScraperApp.populate_date_range_table.__get__(self.app)
         self.app.update_date_range_summary = OrderScraperApp.update_date_range_summary.__get__(self.app)
         self.app.sort_date_range_table = OrderScraperApp.sort_date_range_table.__get__(self.app)
@@ -421,13 +418,11 @@ class YBSControlTests(unittest.TestCase):
         self.app.run_date_range_report()
         insert_calls = self.app.date_tree.insert.call_args_list
         self.assertEqual(len(insert_calls), 3)
-        self.assertEqual(
-            insert_calls[-1].kwargs["values"],
-            ("TOTAL", "", "", "5.00", "", "", ""),
-        )
+        group_values = {call.kwargs["values"] for call in insert_calls[:-1]}
+        self.assertEqual(group_values, {("WS1", "2.00"), ("WS2", "3.00")})
+        self.assertEqual(insert_calls[-1].kwargs["values"], ("TOTAL", "5.00"))
         self.assertEqual(self.app.range_total_jobs_var.get(), "2")
         self.assertEqual(self.app.range_total_hours_var.get(), "5.00")
-        self.assertEqual(self.app.range_avg_hours_var.get(), "2.50")
 
 if __name__ == "__main__":
     unittest.main()
