@@ -17,6 +17,11 @@ from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 from manage_html_report import compute_lead_times, write_report
 import time_utils
 from time_utils import business_hours_delta, business_hours_breakdown
+from production_report import (
+    generate_production_report,
+    export_to_csv,
+    export_to_sheets,
+)
 
 logging.basicConfig(
     level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s"
@@ -75,12 +80,21 @@ class OrderScraperApp:
         self.export_job = None
         self.last_export_dir = export_path
 
+        # production report configuration
+        self.prod_start_var = ctk.StringVar()
+        self.prod_end_var = ctk.StringVar()
+        self.dest_type_var = ctk.StringVar(value="CSV")
+        self.dest_value_var = ctk.StringVar()
+        self.dest_label_var = ctk.StringVar(value="Output Directory:")
+
         # Tabs
         self.tab_control = ctk.CTkTabview(root)
         self.settings_tab = self.tab_control.add("Settings")
         self.orders_tab = self.tab_control.add("Orders")
         # new tab for simple database access
         self.database_tab = self.tab_control.add("Database")
+        # production report tab
+        self.production_tab = self.tab_control.add("Production Report")
         self.tab_control.pack(expand=1, fill="both")
 
         # Settings Tab
@@ -239,6 +253,29 @@ class OrderScraperApp:
         ctk.CTkButton(
             self.database_tab, text="Refresh", command=self.refresh_database_tab
         ).pack(pady=5)
+
+        # Production Report tab view
+        ctk.CTkLabel(self.production_tab, text="Start Date:").grid(row=0, column=0, padx=5, pady=5)
+        DateEntry(self.production_tab, textvariable=self.prod_start_var, width=12, date_pattern="yyyy-mm-dd").grid(row=0, column=1, padx=5, pady=5)
+        ctk.CTkLabel(self.production_tab, text="End Date:").grid(row=1, column=0, padx=5, pady=5)
+        DateEntry(self.production_tab, textvariable=self.prod_end_var, width=12, date_pattern="yyyy-mm-dd").grid(row=1, column=1, padx=5, pady=5)
+        ctk.CTkLabel(self.production_tab, text="Destination:").grid(row=2, column=0, padx=5, pady=5)
+        ctk.CTkOptionMenu(
+            self.production_tab,
+            variable=self.dest_type_var,
+            values=["CSV", "Google Sheets"],
+            command=self.update_destination_input,
+        ).grid(row=2, column=1, padx=5, pady=5)
+        ctk.CTkLabel(self.production_tab, textvariable=self.dest_label_var).grid(row=3, column=0, padx=5, pady=5)
+        ctk.CTkEntry(self.production_tab, textvariable=self.dest_value_var).grid(row=3, column=1, padx=5, pady=5)
+        self.dest_browse_btn = ctk.CTkButton(
+            self.production_tab, text="Browse", command=self.browse_dest
+        )
+        self.dest_browse_btn.grid(row=3, column=2, padx=5, pady=5)
+        ctk.CTkButton(
+            self.production_tab, text="Run Report", command=self.run_production_report
+        ).grid(row=4, column=0, columnspan=3, pady=10)
+        self.update_destination_input(self.dest_type_var.get())
 
         self.refresh_database_tab()
         self.schedule_daily_export()
@@ -803,6 +840,91 @@ class OrderScraperApp:
             self.last_export_dir = path
             self.config["export_path"] = path
             self.save_config()
+
+    def update_destination_input(self, choice):
+        """Adjust destination entry controls based on selected output."""
+        if choice == "CSV":
+            self.dest_label_var.set("Output Directory:")
+            if hasattr(self, "dest_browse_btn"):
+                self.dest_browse_btn.configure(state="normal")
+        else:
+            self.dest_label_var.set("Google Sheet ID:")
+            if hasattr(self, "dest_browse_btn"):
+                self.dest_browse_btn.configure(state="disabled")
+
+    def browse_dest(self):
+        path = filedialog.askdirectory(initialdir=self.last_export_dir)
+        if path:
+            self.dest_value_var.set(path)
+            self.last_export_dir = path
+
+    def load_production_events(self, start, end):
+        """Return production events overlapping the given range."""
+        cur = self.db.cursor()
+        cur.execute("SELECT order_number, workstation, start, end FROM lead_times")
+        events = []
+        for order, ws, s, e in cur.fetchall():
+            if not s or not e:
+                continue
+            try:
+                s_dt = datetime.fromisoformat(s)
+                e_dt = datetime.fromisoformat(e)
+            except ValueError:
+                continue
+            if e_dt <= start or s_dt >= end:
+                continue
+            events.append(
+                {
+                    "orderId": order,
+                    "workstation": ws,
+                    "startTime": s_dt.isoformat(),
+                    "endTime": e_dt.isoformat(),
+                }
+            )
+        return events
+
+    def run_production_report(self):
+        """Generate and export a production report based on user settings."""
+        start_str = self.prod_start_var.get().strip()
+        end_str = self.prod_end_var.get().strip()
+        dest = self.dest_type_var.get()
+        target = self.dest_value_var.get().strip()
+        if not start_str or not end_str:
+            messagebox.showerror("Production Report", "Start and end dates are required")
+            return
+        try:
+            start_dt = datetime.strptime(start_str, "%Y-%m-%d")
+            end_dt = datetime.strptime(end_str, "%Y-%m-%d")
+        except ValueError:
+            messagebox.showerror("Production Report", "Invalid date format")
+            return
+        if end_dt < start_dt:
+            messagebox.showerror("Production Report", "End date must be after start date")
+            return
+        if not target:
+            messagebox.showerror("Production Report", "Destination is required")
+            return
+        end_excl = end_dt + timedelta(days=1)
+        events = self.load_production_events(start_dt, end_excl)
+        if not events:
+            messagebox.showinfo("Production Report", "No data for range")
+            return
+        try:
+            report = generate_production_report(
+                events, start_dt.isoformat(), end_excl.isoformat()
+            )
+        except Exception as e:
+            messagebox.showerror("Production Report", f"Failed to generate: {e}")
+            return
+        try:
+            if dest == "CSV":
+                export_to_csv(report, target)
+            else:
+                export_to_sheets(report, target)
+        except Exception as e:
+            messagebox.showerror("Production Report", f"Export failed: {e}")
+            return
+        messagebox.showinfo("Production Report", "Report exported successfully")
 
     def show_breakdown(self):
         selected = self.orders_tree.focus()
