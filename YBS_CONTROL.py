@@ -96,6 +96,12 @@ class OrderScraperApp:
         self.dest_type_var = ctk.StringVar(value="CSV")
         self.dest_value_var = ctk.StringVar()
         self.dest_label_var = ctk.StringVar(value="Output Directory:")
+        self.prod_filter_var = ctk.StringVar()
+        self.prod_summary_headers = []
+        self.prod_summary_rows = []
+        self.prod_detail_headers = []
+        self.prod_detail_rows = []
+        self.filtered_prod_detail_rows = []
 
         # date range report configuration
         self.range_start_var = ctk.StringVar()
@@ -287,35 +293,43 @@ class OrderScraperApp:
         ctk.CTkButton(
             self.production_tab, text="Run Report", command=self.run_production_report
         ).grid(row=4, column=0, columnspan=3, pady=10)
+        ctk.CTkLabel(self.production_tab, text="Filter:").grid(row=5, column=0, padx=5, pady=5)
+        p_filter = ctk.CTkEntry(self.production_tab, textvariable=self.prod_filter_var)
+        p_filter.grid(row=5, column=1, columnspan=2, sticky="ew", padx=5, pady=5)
+        self.prod_filter_var.trace_add("write", lambda *args: self.filter_production_detail_rows())
 
         # Treeviews for displaying report data
-        self.production_tab.grid_rowconfigure(5, weight=1)
         self.production_tab.grid_rowconfigure(6, weight=1)
+        self.production_tab.grid_rowconfigure(7, weight=1)
         self.production_tab.grid_columnconfigure(0, weight=1)
         self.production_tab.grid_columnconfigure(1, weight=1)
         self.production_tab.grid_columnconfigure(2, weight=1)
 
         summary_frame = ctk.CTkFrame(self.production_tab)
-        summary_frame.grid(row=5, column=0, columnspan=3, sticky="nsew", padx=10, pady=10)
+        summary_frame.grid(row=6, column=0, columnspan=3, sticky="nsew", padx=10, pady=10)
         self.prod_summary_tree = ttk.Treeview(summary_frame, show="headings")
         self.prod_summary_tree.configure(style="Report.Treeview")
         self.prod_summary_tree.pack(side="left", expand=1, fill="both")
         sum_scroll = ttk.Scrollbar(summary_frame, orient="vertical", command=self.prod_summary_tree.yview)
         self.prod_summary_tree.configure(yscrollcommand=sum_scroll.set)
         sum_scroll.pack(side="right", fill="y")
+        self.prod_summary_tree.tag_configure("even", background="#ffffff")
+        self.prod_summary_tree.tag_configure("odd", background="#f0f0ff")
 
         detail_frame = ctk.CTkFrame(self.production_tab)
-        detail_frame.grid(row=6, column=0, columnspan=3, sticky="nsew", padx=10, pady=10)
+        detail_frame.grid(row=7, column=0, columnspan=3, sticky="nsew", padx=10, pady=10)
         self.prod_detail_tree = ttk.Treeview(detail_frame, show="headings")
         self.prod_detail_tree.configure(style="Report.Treeview")
         self.prod_detail_tree.pack(side="left", expand=1, fill="both")
         det_scroll = ttk.Scrollbar(detail_frame, orient="vertical", command=self.prod_detail_tree.yview)
         self.prod_detail_tree.configure(yscrollcommand=det_scroll.set)
         det_scroll.pack(side="right", fill="y")
+        self.prod_detail_tree.tag_configure("even", background="#ffffff")
+        self.prod_detail_tree.tag_configure("odd", background="#f0f0ff")
 
         ctk.CTkButton(
             self.production_tab, text="Export Report", command=self.export_production_report
-        ).grid(row=7, column=0, columnspan=3, pady=5)
+        ).grid(row=8, column=0, columnspan=3, pady=5)
         self.update_destination_input(self.dest_type_var.get())
 
         # Date Range Report tab view
@@ -1034,26 +1048,70 @@ class OrderScraperApp:
 
         # Save report for optional export
         self.production_report_data = report
+        self.prod_filter_var.set("")
 
-        # Populate summary table
+        # Populate summary table and cache rows
         headers, rows = _build_summary_table(report)
+        self.prod_summary_headers = headers
+        self.prod_summary_rows = rows
+        self.populate_prod_summary_tree(headers, rows)
+
+        # Populate detail table and cache rows
+        d_headers, d_rows = _build_detail_table(report)
+        self.prod_detail_headers = d_headers
+        self.prod_detail_rows = d_rows
+        self.filtered_prod_detail_rows = list(d_rows)
+        self.populate_prod_detail_tree(d_headers, d_rows)
+
+    def populate_prod_summary_tree(self, headers, rows):
+        """Fill the production summary treeview."""
         self.prod_summary_tree.delete(*self.prod_summary_tree.get_children())
         self.prod_summary_tree["columns"] = headers
         for h in headers:
-            self.prod_summary_tree.heading(h, text=h)
-            self.prod_summary_tree.column(h, width=100)
-        for row in rows:
-            self.prod_summary_tree.insert("", "end", values=row)
+            self.prod_summary_tree.heading(h, text=h, command=lambda c=h: self.sort_prod_summary(c))
+            self.prod_summary_tree.column(h, width=100, anchor="e")
+        for idx, row in enumerate(rows):
+            tag = "even" if idx % 2 == 0 else "odd"
+            self.prod_summary_tree.insert("", "end", values=row, tags=(tag,))
 
-        # Populate detail table
-        d_headers, d_rows = _build_detail_table(report)
+    def populate_prod_detail_tree(self, headers, rows):
+        """Fill the production detail treeview."""
         self.prod_detail_tree.delete(*self.prod_detail_tree.get_children())
-        self.prod_detail_tree["columns"] = d_headers
-        for h in d_headers:
-            self.prod_detail_tree.heading(h, text=h)
-            self.prod_detail_tree.column(h, width=120)
-        for row in d_rows:
-            self.prod_detail_tree.insert("", "end", values=row)
+        self.prod_detail_tree["columns"] = headers
+        for h in headers:
+            self.prod_detail_tree.heading(h, text=h, command=lambda c=h: self.sort_prod_detail(c))
+            self.prod_detail_tree.column(h, width=120, anchor="w")
+        for idx, row in enumerate(rows):
+            tag = "even" if idx % 2 == 0 else "odd"
+            self.prod_detail_tree.insert("", "end", values=row, tags=(tag,))
+
+    def filter_production_detail_rows(self, *args):
+        term = self.prod_filter_var.get().lower()
+        if not term:
+            rows = self.prod_detail_rows
+        else:
+            rows = [r for r in self.prod_detail_rows if any(term in str(v).lower() for v in r)]
+        self.filtered_prod_detail_rows = rows
+        self.populate_prod_detail_tree(self.prod_detail_headers, rows)
+
+    def sort_prod_summary(self, column, reverse=False):
+        idx = self.prod_summary_headers.index(column)
+        self.prod_summary_rows.sort(key=lambda r: self._sort_key(r[idx]), reverse=reverse)
+        self.populate_prod_summary_tree(self.prod_summary_headers, self.prod_summary_rows)
+        self.prod_summary_tree.heading(column, command=lambda: self.sort_prod_summary(column, not reverse))
+
+    def sort_prod_detail(self, column, reverse=False):
+        idx = self.prod_detail_headers.index(column)
+        self.filtered_prod_detail_rows.sort(key=lambda r: self._sort_key(r[idx]), reverse=reverse)
+        self.populate_prod_detail_tree(self.prod_detail_headers, self.filtered_prod_detail_rows)
+        self.prod_detail_tree.heading(column, command=lambda: self.sort_prod_detail(column, not reverse))
+
+    @staticmethod
+    def _sort_key(val):
+        try:
+            return float(val)
+        except (ValueError, TypeError):
+            return val
 
     def export_production_report(self):
         """Export the last generated production report to the selected destination."""
