@@ -533,17 +533,35 @@ class OrderScraperApp:
         order_number = self.orders_tree.item(selected, "values")[0]
         start, end = self.get_date_range()
         steps = self.load_steps(order_number)
-        lines = []
+        rows = []
         for (name, s), (next_name, e) in zip(steps, steps[1:]):
             if not s or not e:
                 continue
-            segments = business_hours_breakdown(s, e)
-            if segments:
-                lines.append(f"{next_name}:")
-                for seg_start, seg_end in segments:
-                    hours = (seg_end - seg_start).total_seconds() / 3600.0
-                    lines.append(f"  {seg_start} -> {seg_end} ({hours:.2f}h)")
-        messagebox.showinfo("Breakdown", "\n".join(lines) if lines else "No breakdown data")
+            for seg_start, seg_end in business_hours_breakdown(s, e):
+                hours = (seg_end - seg_start).total_seconds() / 3600.0
+                rows.append(
+                    (
+                        next_name,
+                        seg_start.strftime("%Y-%m-%d %H:%M"),
+                        seg_end.strftime("%Y-%m-%d %H:%M"),
+                        f"{hours:.2f}",
+                    )
+                )
+        if not rows:
+            messagebox.showinfo("Breakdown", "No breakdown data")
+            return
+        top = ctk.CTkToplevel(self.root)
+        top.title("Breakdown")
+        tree = ttk.Treeview(
+            top, columns=("Workstation", "Start", "End", "Hours"), show="headings"
+        )
+        tree.heading("Workstation", text="Workstation")
+        tree.heading("Start", text="Start")
+        tree.heading("End", text="End")
+        tree.heading("Hours", text="Hours")
+        tree.pack(expand=1, fill="both")
+        for row in rows:
+            tree.insert("", "end", values=row)
 
     def browse_db(self):
         path = filedialog.askopenfilename(
