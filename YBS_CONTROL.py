@@ -224,7 +224,8 @@ class OrderScraperApp:
         else:
             self.logged_in = False
             messagebox.showerror("Login", "Login failed.")
-        self.get_orders()
+        if self.logged_in:
+            self.get_orders()
 
     def get_orders(self):
         if not self.logged_in:
