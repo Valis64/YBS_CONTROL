@@ -27,12 +27,13 @@ beautifulsoup4
 
 customtkinter
 
+tkcalendar
+
 Install dependencies with:
 
-bash
-Copy
-Edit
-pip install requests beautifulsoup4 customtkinter
+```bash
+pip install requests beautifulsoup4 customtkinter tkcalendar
+```
 Usage
 Run the script
 
@@ -137,10 +138,12 @@ Output:
 The example shows a 30-minute segment on Friday and a 2-hour segment on
 Monday, totalling 2.5 lead-time hours.
 
-Date range filtering is available directly in the GUI. Enter a start and/or end
-date on the Orders tab (in `YYYY-MM-DD` format) and use **Export Date Range** to
-save a report for all jobs in that window. Selecting an individual order and
-clicking **Export Report** will also honour the entered dates.
+Date range filtering is available directly in the GUI. Use the preset menu (Today,
+Last 7 days, etc.) or choose **Custom** to pick start and end dates from
+calendar widgets on the Orders tab. The chosen range is validated and reused on
+next launch. Use **Export Date Range** to save a report for all jobs in the
+window. Selecting an individual order and clicking **Export Report** will also
+honour the entered dates.
 
 You can also parse a saved `manage.html` file with `manage_html_report.py`:
 
@@ -150,3 +153,4 @@ python manage_html_report.py manage.html --output report.csv \
 ```
 
 This reads the workstation timestamps from the HTML table and produces the same style report.
+

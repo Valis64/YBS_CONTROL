@@ -10,6 +10,7 @@ import re
 from datetime import datetime, timedelta
 import json
 import logging
+from tkcalendar import DateEntry
 
 from matplotlib.figure import Figure
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
@@ -132,6 +133,24 @@ class OrderScraperApp:
         self.search_var = ctk.StringVar()
         self.start_date_var = ctk.StringVar()
         self.end_date_var = ctk.StringVar()
+        presets = {
+            "Today": "today",
+            "Yesterday": "yesterday",
+            "Last 7 days": "last7",
+            "Last 30 days": "last30",
+            "This month": "thisMonth",
+            "Last month": "lastMonth",
+            "Custom": "custom",
+        }
+        self.preset_labels = presets
+        self.preset_codes = {v: k for k, v in presets.items()}
+        last_range = self.config.get("last_range", {})
+        start_default = last_range.get("start", "")
+        end_default = last_range.get("end", "")
+        preset_default = self.preset_codes.get(last_range.get("preset", "last7"), "Last 7 days")
+        self.start_date_var.set(start_default)
+        self.end_date_var.set(end_default)
+        self.preset_var = ctk.StringVar(value=preset_default)
         search_frame = ctk.CTkFrame(self.orders_tab)
         search_frame.pack(fill="x", padx=10, pady=5)
         ctk.CTkLabel(search_frame, text="Order Search:").pack(side="left", padx=5)
@@ -139,10 +158,22 @@ class OrderScraperApp:
         ctk.CTkButton(search_frame, text="Search", command=self.search_orders).pack(side="left", padx=5)
 
         # date range controls
-        ctk.CTkLabel(search_frame, text="Start (YYYY-MM-DD):").pack(side="left", padx=5)
-        ctk.CTkEntry(search_frame, textvariable=self.start_date_var, width=100).pack(side="left", padx=5)
-        ctk.CTkLabel(search_frame, text="End (YYYY-MM-DD):").pack(side="left", padx=5)
-        ctk.CTkEntry(search_frame, textvariable=self.end_date_var, width=100).pack(side="left", padx=5)
+        ctk.CTkLabel(search_frame, text="Range:").pack(side="left", padx=5)
+        self.preset_menu = ctk.CTkOptionMenu(
+            search_frame,
+            variable=self.preset_var,
+            values=list(presets.keys()),
+            command=self.update_preset,
+            width=120,
+        )
+        self.preset_menu.pack(side="left", padx=5)
+        self.start_entry = DateEntry(search_frame, textvariable=self.start_date_var, width=12, date_pattern="yyyy-mm-dd")
+        self.start_entry.pack(side="left", padx=5)
+        self.end_entry = DateEntry(search_frame, textvariable=self.end_date_var, width=12, date_pattern="yyyy-mm-dd")
+        self.end_entry.pack(side="left", padx=5)
+        self.start_entry.bind("<<DateEntrySelected>>", self.save_current_range)
+        self.end_entry.bind("<<DateEntrySelected>>", self.save_current_range)
+        self.update_preset(self.preset_var.get())
 
         self.table_frame = ctk.CTkFrame(self.orders_tab)
         self.table_frame.pack(expand=1, fill="both", padx=10, pady=10)
@@ -486,6 +517,54 @@ class OrderScraperApp:
             self.analytics_ax.set_xlabel("Job")
         self.analytics_canvas.draw()
 
+    def apply_preset(self, preset: str):
+        now = datetime.now()
+        if preset == "today":
+            s = e = now
+        elif preset == "yesterday":
+            y = now - timedelta(days=1)
+            s = e = y
+        elif preset == "last7":
+            s = now - timedelta(days=6)
+            e = now
+        elif preset == "last30":
+            s = now - timedelta(days=29)
+            e = now
+        elif preset == "thisMonth":
+            s = datetime(now.year, now.month, 1)
+            e = now
+        elif preset == "lastMonth":
+            first_this = datetime(now.year, now.month, 1)
+            last_month_end = first_this - timedelta(days=1)
+            s = datetime(last_month_end.year, last_month_end.month, 1)
+            e = last_month_end
+        else:  # custom
+            return None, None
+        self.start_date_var.set(s.strftime("%Y-%m-%d"))
+        self.end_date_var.set(e.strftime("%Y-%m-%d"))
+        return s, e
+
+    def update_preset(self, label: str):
+        preset = self.preset_labels[label]
+        if preset == "custom":
+            self.start_entry.configure(state="normal")
+            self.end_entry.configure(state="normal")
+        else:
+            self.start_entry.configure(state="disabled")
+            self.end_entry.configure(state="disabled")
+            self.apply_preset(preset)
+        self.save_current_range()
+
+    def save_current_range(self, event=None):
+        label = self.preset_var.get()
+        preset = self.preset_labels[label]
+        self.config["last_range"] = {
+            "preset": preset,
+            "start": self.start_date_var.get(),
+            "end": self.end_date_var.get(),
+        }
+        self.save_config()
+
     def get_date_range(self):
         """Return (start, end) datetimes from the entry fields or None."""
         start = None
@@ -500,6 +579,9 @@ class OrderScraperApp:
                 end = datetime.strptime(self.end_date_var.get().strip(), "%Y-%m-%d")
             except ValueError:
                 messagebox.showerror("Date", "Invalid end date format")
+        if start and end and end < start:
+            messagebox.showerror("Date", "End date must be after start date")
+            return None, None
         return start, end
 
     def show_report(self, event=None):
