@@ -117,6 +117,15 @@ class YBSControlTests(unittest.TestCase):
         self.assertEqual(insert_calls[0].kwargs["values"][0], "Cutting")
         self.assertEqual(insert_calls[1].kwargs["values"][0], "Welding")
 
+    @patch("YBS_CONTROL.messagebox")
+    def test_get_date_range_invalid_order(self, mock_messagebox):
+        self.app.start_date_var = SimpleVar("2024-01-02")
+        self.app.end_date_var = SimpleVar("2024-01-01")
+        start, end = OrderScraperApp.get_date_range(self.app)
+        self.assertIsNone(start)
+        self.assertIsNone(end)
+        mock_messagebox.showerror.assert_called_once()
+
     @patch("YBS_CONTROL.sqlite3.connect")
     def test_connect_db_allows_network_path(self, mock_connect):
         mock_conn = MagicMock()
