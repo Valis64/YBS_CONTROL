@@ -150,3 +150,18 @@ python manage_html_report.py manage.html --output report.csv \
 ```
 
 This reads the workstation timestamps from the HTML table and produces the same style report.
+
+## Frontend Date Range Picker
+A reusable `DateRangePicker` React component is available under `frontend/DateRangePicker.tsx`. It provides calendar inputs for selecting start and end dates, quick presets (today, last 7 days, etc.), validation, local storage persistence, and emits ISO-8601 dates with the preset name:
+
+```json
+{
+  "dateRange": {
+    "start": "2025-08-01T00:00:00Z",
+    "end": "2025-08-11T23:59:59Z",
+    "preset": "last7"
+  }
+}
+```
+
+Use it wherever a date range is required for export or analytics.
