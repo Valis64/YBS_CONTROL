@@ -99,6 +99,17 @@ class YBSControlTests(unittest.TestCase):
         self.assertEqual(insert_calls[0].kwargs["values"][0], "Cutting")
         self.assertEqual(insert_calls[1].kwargs["values"][0], "Welding")
 
+    @patch("YBS_CONTROL.sqlite3.connect")
+    def test_connect_db_allows_network_path(self, mock_connect):
+        mock_conn = MagicMock()
+        mock_cursor = MagicMock()
+        mock_conn.cursor.return_value = mock_cursor
+        mock_connect.return_value = mock_conn
+        self.app.db_path_var = SimpleVar("orders.db")
+        self.app.db = MagicMock()
+        OrderScraperApp.connect_db(self.app, r"\\server\share\orders.db")
+        mock_connect.assert_called_with(r"\\server\share\orders.db")
+
 
 if __name__ == "__main__":
     unittest.main()
