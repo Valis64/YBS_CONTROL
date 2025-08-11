@@ -546,8 +546,7 @@ class OrderScraperApp:
         messagebox.showinfo("Breakdown", "\n".join(lines) if lines else "No breakdown data")
 
     def browse_db(self):
-        path = filedialog.asksaveasfilename(
-            defaultextension=".db",
+        path = filedialog.askopenfilename(
             filetypes=[("SQLite DB", "*.db"), ("All Files", "*")],
             initialdir=self.last_db_dir,
         )
