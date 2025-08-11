@@ -98,6 +98,45 @@ calculation. A helper `business_hours_breakdown()` function in
 `time_utils.py` can be used to inspect the exact segments counted if you
 need to verify how business hours were applied.
 
+How Lead-Time Hours Are Calculated
+---------------------------------
+
+Lead-time hours are measured only during the 08:00–16:30 window on weekdays.
+Time outside this range is ignored, and Saturdays and Sundays are skipped.
+
+1. The `business_hours_breakdown()` function slices each `time_in`/`time_out`
+   pair into segments that fall within business hours.
+2. Durations of these segments are summed.
+3. The total is converted to hours for the final report.
+
+Example:
+
+```python
+from datetime import datetime, timedelta
+from time_utils import business_hours_breakdown
+
+start = datetime(2024, 1, 5, 16, 0)  # Friday 4pm
+end = datetime(2024, 1, 8, 10, 0)    # Monday 10am
+
+segments = business_hours_breakdown(start, end)
+for seg_start, seg_end in segments:
+    print(f"{seg_start} -> {seg_end}")
+
+total = sum((seg_end - seg_start for seg_start, seg_end in segments), timedelta())
+print(total.total_seconds() / 3600)
+```
+
+Output:
+
+```
+2024-01-05 16:00:00 -> 2024-01-05 16:30:00
+2024-01-08 08:00:00 -> 2024-01-08 10:00:00
+2.5
+```
+
+The example shows a 30-minute segment on Friday and a 2-hour segment on
+Monday, totalling 2.5 lead-time hours.
+
 Date range filtering is available directly in the GUI. Enter a start and/or end
 date on the Orders tab (in `YYYY-MM-DD` format) and use **Export Date Range** to
 save a report for all jobs in that window. Selecting an individual order and
