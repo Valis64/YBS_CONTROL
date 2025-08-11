@@ -72,7 +72,6 @@ class OrderScraperApp:
         self.tab_control = ctk.CTkTabview(root)
         self.settings_tab = self.tab_control.add("Settings")
         self.orders_tab = self.tab_control.add("Orders")
-        self.analytics_tab = self.tab_control.add("Analytics")
         # new tab for simple database access
         self.database_tab = self.tab_control.add("Database")
         self.tab_control.pack(expand=1, fill="both")
@@ -178,28 +177,10 @@ class OrderScraperApp:
         ctk.CTkButton(self.orders_tab, text="Export Date Range", command=self.export_date_range).pack(pady=5)
         ctk.CTkButton(self.orders_tab, text="Show Breakdown", command=self.show_breakdown).pack(pady=5)
         ctk.CTkButton(self.orders_tab, text="Refresh Orders", command=self.get_orders).pack(pady=5)
+        ctk.CTkButton(self.orders_tab, text="Open Analytics", command=self.open_analytics_window).pack(pady=5)
 
         self.orders_tree.bind("<<TreeviewSelect>>", self.show_report)
         self.orders_tree.bind("<Double-1>", self.export_report)
-
-        # Analytics Tab
-        self.analytics_job_var = ctk.StringVar()
-        self.analytics_start_var = ctk.StringVar()
-        self.analytics_end_var = ctk.StringVar()
-        a_controls = ctk.CTkFrame(self.analytics_tab)
-        a_controls.pack(fill="x", padx=10, pady=5)
-        ctk.CTkLabel(a_controls, text="Job Filter:").pack(side="left", padx=5)
-        ctk.CTkEntry(a_controls, textvariable=self.analytics_job_var, width=120).pack(side="left", padx=5)
-        ctk.CTkLabel(a_controls, text="Start (YYYY-MM-DD):").pack(side="left", padx=5)
-        ctk.CTkEntry(a_controls, textvariable=self.analytics_start_var, width=100).pack(side="left", padx=5)
-        ctk.CTkLabel(a_controls, text="End (YYYY-MM-DD):").pack(side="left", padx=5)
-        ctk.CTkEntry(a_controls, textvariable=self.analytics_end_var, width=100).pack(side="left", padx=5)
-        ctk.CTkButton(a_controls, text="Update Chart", command=self.update_analytics_chart).pack(side="left", padx=5)
-
-        self.analytics_fig = Figure(figsize=(5, 4))
-        self.analytics_ax = self.analytics_fig.add_subplot(111)
-        self.analytics_canvas = FigureCanvasTkAgg(self.analytics_fig, master=self.analytics_tab)
-        self.analytics_canvas.get_tk_widget().pack(expand=1, fill="both")
 
         # Database Tab view
         self.db_tree = ttk.Treeview(
@@ -420,6 +401,36 @@ class OrderScraperApp:
         ]
         return rows
 
+    def open_analytics_window(self):
+        """Create a pop-out window for analytics charts."""
+        if hasattr(self, "analytics_window") and self.analytics_window.winfo_exists():
+            self.analytics_window.focus()
+            return
+        self.analytics_window = ctk.CTkToplevel(self.root)
+        self.analytics_window.title("Analytics")
+        self.analytics_job_var = ctk.StringVar()
+        self.analytics_start_var = ctk.StringVar()
+        self.analytics_end_var = ctk.StringVar()
+        a_controls = ctk.CTkFrame(self.analytics_window)
+        a_controls.pack(fill="x", padx=10, pady=5)
+        ctk.CTkLabel(a_controls, text="Job Filter:").pack(side="left", padx=5)
+        ctk.CTkEntry(a_controls, textvariable=self.analytics_job_var, width=120).pack(side="left", padx=5)
+        ctk.CTkLabel(a_controls, text="Start (YYYY-MM-DD):").pack(side="left", padx=5)
+        ctk.CTkEntry(a_controls, textvariable=self.analytics_start_var, width=100).pack(side="left", padx=5)
+        ctk.CTkLabel(a_controls, text="End (YYYY-MM-DD):").pack(side="left", padx=5)
+        ctk.CTkEntry(a_controls, textvariable=self.analytics_end_var, width=100).pack(side="left", padx=5)
+        ctk.CTkButton(
+            a_controls, text="Update Chart", command=self.update_analytics_chart
+        ).pack(side="left", padx=5)
+
+        self.analytics_fig = Figure(figsize=(5, 4))
+        self.analytics_ax = self.analytics_fig.add_subplot(111)
+        self.analytics_canvas = FigureCanvasTkAgg(
+            self.analytics_fig, master=self.analytics_window
+        )
+        self.analytics_canvas.get_tk_widget().pack(expand=1, fill="both")
+        self.update_analytics_chart()
+
     def update_analytics_chart(self):
         """Compute lead times for visible orders and update the bar chart."""
         start = None
@@ -452,7 +463,10 @@ class OrderScraperApp:
             totals.append((job, total))
         if totals:
             labels, hours = zip(*totals)
-            self.analytics_ax.bar(labels, hours)
+            indices = range(len(labels))
+            self.analytics_ax.bar(indices, hours)
+            self.analytics_ax.set_xticks(indices)
+            self.analytics_ax.set_xticklabels(labels, rotation=90)
             self.analytics_ax.set_ylabel("Hours in queue")
             self.analytics_ax.set_xlabel("Job")
         self.analytics_canvas.draw()
