@@ -37,6 +37,11 @@ class YBSControlTests(unittest.TestCase):
         self.app.config = {}
         self.app.save_config = MagicMock()
         self.app.last_db_dir = ""
+        self.app.export_path_var = SimpleVar("/tmp")
+        self.app.export_time_var = SimpleVar("")
+        self.app.export_job = None
+        # bind methods added after object creation
+        self.app._run_scheduled_export = OrderScraperApp._run_scheduled_export.__get__(self.app)
 
     @patch("YBS_CONTROL.messagebox")
     def test_login_request_exception(self, mock_messagebox):
@@ -246,6 +251,23 @@ class YBSControlTests(unittest.TestCase):
         self.app._handle_login_response(mock_resp, silent=True)
         mock_messagebox.showinfo.assert_not_called()
         self.app.get_orders.assert_called_once()
+
+    def test_schedule_daily_export_invokes_export(self):
+        self.app.root = MagicMock()
+        callbacks = {}
+
+        def fake_after(delay, func):
+            callbacks['func'] = func
+            return 'job'
+
+        self.app.root.after = MagicMock(side_effect=fake_after)
+        self.app.root.after_cancel = MagicMock()
+        self.app.export_date_range = MagicMock()
+        self.app.export_time_var = SimpleVar("00:00")
+        OrderScraperApp.schedule_daily_export(self.app)
+        self.assertIn('func', callbacks)
+        callbacks['func']()
+        self.app.export_date_range.assert_called_once()
 
 
 if __name__ == "__main__":
