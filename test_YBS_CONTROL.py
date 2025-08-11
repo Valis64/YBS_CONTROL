@@ -52,6 +52,14 @@ class YBSControlTests(unittest.TestCase):
         self.app.get_orders.assert_not_called()
 
     @patch("YBS_CONTROL.messagebox")
+    def test_login_request_exception_silent(self, mock_messagebox):
+        self.app.get_orders = MagicMock()
+        self.app.session.post.side_effect = requests.Timeout("boom")
+        self.app.login(silent=True)
+        mock_messagebox.showerror.assert_not_called()
+        self.app.get_orders.assert_not_called()
+
+    @patch("YBS_CONTROL.messagebox")
     def test_get_orders_request_exception(self, mock_messagebox):
         self.app.session.get.side_effect = requests.RequestException("fail")
         self.app.get_orders()
@@ -157,6 +165,18 @@ class YBSControlTests(unittest.TestCase):
         # simulate login success
         mock_resp.text = "logout"
         self.app._handle_login_response(mock_resp)
+        self.app.get_orders.assert_called_once()
+
+    @patch("YBS_CONTROL.messagebox")
+    def test_handle_login_response_silent(self, mock_messagebox):
+        self.app.get_orders = MagicMock()
+        self.app.refresh_entry = MagicMock()
+        self.app.refresh_button = MagicMock()
+        self.app.schedule_auto_refresh = MagicMock()
+        mock_resp = MagicMock()
+        mock_resp.text = "logout"
+        self.app._handle_login_response(mock_resp, silent=True)
+        mock_messagebox.showinfo.assert_not_called()
         self.app.get_orders.assert_called_once()
 
 
