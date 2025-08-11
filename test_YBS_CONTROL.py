@@ -37,6 +37,11 @@ class YBSControlTests(unittest.TestCase):
         self.app.config = {}
         self.app.save_config = MagicMock()
         self.app.last_db_dir = ""
+        self.app.export_path_var = SimpleVar("/tmp")
+        self.app.export_time_var = SimpleVar("")
+        self.app.export_job = None
+        # bind methods added after object creation
+        self.app._run_scheduled_export = OrderScraperApp._run_scheduled_export.__get__(self.app)
 
     @patch("YBS_CONTROL.messagebox")
     def test_login_request_exception(self, mock_messagebox):
@@ -217,6 +222,20 @@ class YBSControlTests(unittest.TestCase):
         self.assertEqual(kwargs.get("initialdir"), "/tmp")
         self.app.connect_db.assert_called_with("/tmp/orders.db")
 
+    @patch("YBS_CONTROL.filedialog.askdirectory", return_value="/exports")
+    def test_browse_export_path_uses_last_directory(self, mock_dialog):
+        self.app.last_export_dir = "/tmp"
+        self.app.export_path_var = SimpleVar("")
+        self.app.config = {}
+        OrderScraperApp.browse_export_path(self.app)
+        mock_dialog.assert_called_once()
+        args, kwargs = mock_dialog.call_args
+        self.assertEqual(kwargs.get("initialdir"), "/tmp")
+        self.assertEqual(self.app.export_path_var.get(), "/exports")
+        self.assertEqual(self.app.last_export_dir, "/exports")
+        self.assertEqual(self.app.config["export_path"], "/exports")
+        self.app.save_config.assert_called_once()
+
     @patch("YBS_CONTROL.messagebox")
     def test_handle_login_response_triggers_get_orders_only_on_success(self, mock_messagebox):
         self.app.get_orders = MagicMock()
@@ -246,6 +265,23 @@ class YBSControlTests(unittest.TestCase):
         self.app._handle_login_response(mock_resp, silent=True)
         mock_messagebox.showinfo.assert_not_called()
         self.app.get_orders.assert_called_once()
+
+    def test_schedule_daily_export_invokes_export(self):
+        self.app.root = MagicMock()
+        callbacks = {}
+
+        def fake_after(delay, func):
+            callbacks['func'] = func
+            return 'job'
+
+        self.app.root.after = MagicMock(side_effect=fake_after)
+        self.app.root.after_cancel = MagicMock()
+        self.app.export_date_range = MagicMock()
+        self.app.export_time_var = SimpleVar("00:00")
+        OrderScraperApp.schedule_daily_export(self.app)
+        self.assertIn('func', callbacks)
+        callbacks['func']()
+        self.app.export_date_range.assert_called_once()
 
 
 if __name__ == "__main__":
