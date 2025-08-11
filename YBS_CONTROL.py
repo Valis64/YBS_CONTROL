@@ -9,6 +9,7 @@ import sqlite3
 import re
 from datetime import datetime
 from manage_html_report import compute_lead_times, write_report
+from time_utils import business_hours_delta
 
 # Default login endpoint on ybsnow.com. The site currently posts the login form
 # to ``index.php`` with fields named "email", "password" and a hidden
@@ -332,9 +333,9 @@ class OrderScraperApp:
             return
         order_number = self.orders_tree.item(selected, "values")[0]
         start, end = self.get_date_range()
+        steps = self.load_steps(order_number)
         rows = self.load_lead_times(order_number, start, end)
         if not rows:
-            steps = self.load_steps(order_number)
             rows = compute_lead_times({order_number: steps}, start, end).get(order_number, [])
             # store for future
             cur = self.db.cursor()
@@ -350,20 +351,34 @@ class OrderScraperApp:
                     ),
                 )
             self.db.commit()
+        row_map = {r["step"]: r for r in rows}
         self.report_tree.delete(*self.report_tree.get_children())
         total = 0.0
-        for item in rows:
+        for idx, (name, ts) in enumerate(steps):
+            row = row_map.get(name)
+            if row:
+                start_ts = row["start"]
+                end_ts = row["end"]
+                hours = row["hours"]
+            else:
+                start_ts = steps[idx - 1][1] if idx > 0 else None
+                end_ts = ts
+                hours = None
+                if start_ts and end_ts:
+                    delta = business_hours_delta(start_ts, end_ts)
+                    hours = delta.total_seconds() / 3600.0
             self.report_tree.insert(
                 "",
                 "end",
                 values=(
-                    item["step"],
-                    item["start"].strftime("%Y-%m-%d %H:%M"),
-                    item["end"].strftime("%Y-%m-%d %H:%M"),
-                    f"{item['hours']:.2f}",
+                    name,
+                    start_ts.strftime("%Y-%m-%d %H:%M") if start_ts else "",
+                    end_ts.strftime("%Y-%m-%d %H:%M") if end_ts else "",
+                    f"{hours:.2f}" if hours is not None else "",
                 ),
             )
-            total += item["hours"]
+            if hours is not None:
+                total += hours
         self.report_tree.insert("", "end", values=("TOTAL", "", "", f"{total:.2f}"))
 
     def export_selected(self):
