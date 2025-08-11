@@ -7,7 +7,7 @@ import time
 import os
 import sqlite3
 import re
-from datetime import datetime
+from datetime import datetime, timedelta
 import json
 import logging
 
@@ -67,6 +67,12 @@ class OrderScraperApp:
         self.orders_url_var = ctk.StringVar(value=ORDERS_URL)
         self.refresh_interval_var = ctk.IntVar(value=5)
         self.auto_refresh_job = None
+        # export configuration
+        export_path = self.config.get("export_path", os.getcwd())
+        self.export_path_var = ctk.StringVar(value=export_path)
+        self.export_time_var = ctk.StringVar(value=self.config.get("export_time", ""))
+        self.export_job = None
+        self.last_export_dir = export_path
 
         # Tabs
         self.tab_control = ctk.CTkTabview(root)
@@ -113,6 +119,14 @@ class OrderScraperApp:
         self.business_end_var = ctk.StringVar(value=time_utils.BUSINESS_END.strftime("%H:%M"))
         ctk.CTkEntry(self.settings_tab, textvariable=self.business_end_var, width=80).grid(row=9, column=1, padx=5, pady=5)
         ctk.CTkButton(self.settings_tab, text="Set Hours", command=self.update_business_hours).grid(row=10, column=0, columnspan=2, pady=10)
+
+        ctk.CTkLabel(self.settings_tab, text="Export Path:").grid(row=11, column=0, padx=5, pady=5)
+        ctk.CTkEntry(self.settings_tab, textvariable=self.export_path_var).grid(row=11, column=1, padx=5, pady=5)
+        ctk.CTkButton(self.settings_tab, text="Browse", command=self.browse_export_path).grid(row=11, column=2, padx=5, pady=5)
+
+        ctk.CTkLabel(self.settings_tab, text="Export Time (HH:MM):").grid(row=12, column=0, padx=5, pady=5)
+        ctk.CTkEntry(self.settings_tab, textvariable=self.export_time_var, width=80).grid(row=12, column=1, padx=5, pady=5)
+        ctk.CTkButton(self.settings_tab, text="Set Export", command=self.update_export_settings).grid(row=13, column=0, columnspan=2, pady=10)
 
         # Orders Tab
         self.search_var = ctk.StringVar()
@@ -196,6 +210,7 @@ class OrderScraperApp:
         ).pack(pady=5)
 
         self.refresh_database_tab()
+        self.schedule_daily_export()
 
         # Relogin timer
         self.relogin_thread = threading.Thread(target=self.relogin_loop, daemon=True)
@@ -602,7 +617,9 @@ class OrderScraperApp:
             return
         s = start.strftime("%Y%m%d") if start else "begin"
         e = end.strftime("%Y%m%d") if end else "now"
-        path = f"lead_time_{s}_{e}.csv"
+        export_dir = self.export_path_var.get().strip() or os.getcwd()
+        os.makedirs(export_dir, exist_ok=True)
+        path = os.path.join(export_dir, f"lead_time_{s}_{e}.csv")
         write_report(results, path)
         messagebox.showinfo("Export", f"Report written to {path}")
 
@@ -626,6 +643,31 @@ class OrderScraperApp:
         if self.logged_in:
             self.get_orders()
         self.schedule_auto_refresh()
+
+    def schedule_daily_export(self):
+        """Schedule the daily export based on configured time."""
+        t_str = self.export_time_var.get().strip()
+        if not t_str:
+            return
+        try:
+            target_time = datetime.strptime(t_str, "%H:%M").time()
+        except ValueError:
+            return
+        now = datetime.now()
+        run_dt = datetime.combine(now.date(), target_time)
+        if run_dt <= now:
+            run_dt += timedelta(days=1)
+        delay_ms = int((run_dt - now).total_seconds() * 1000)
+        if self.export_job is not None:
+            try:
+                self.root.after_cancel(self.export_job)
+            except Exception:
+                pass
+        self.export_job = self.root.after(delay_ms, self._run_scheduled_export)
+
+    def _run_scheduled_export(self):
+        self.export_date_range()
+        self.schedule_daily_export()
 
     def load_config(self):
         try:
@@ -657,6 +699,28 @@ class OrderScraperApp:
         self.config["business_end"] = end.strftime("%H:%M")
         self.save_config()
         messagebox.showinfo("Business Hours", "Business hours updated")
+
+    def update_export_settings(self):
+        path = self.export_path_var.get().strip() or os.getcwd()
+        t_str = self.export_time_var.get().strip()
+        try:
+            datetime.strptime(t_str, "%H:%M")
+        except ValueError:
+            messagebox.showerror("Export Settings", "Invalid time format")
+            return
+        self.config["export_path"] = path
+        self.config["export_time"] = t_str
+        self.save_config()
+        messagebox.showinfo("Export Settings", "Export settings updated")
+        self.schedule_daily_export()
+
+    def browse_export_path(self):
+        path = filedialog.askdirectory(initialdir=self.last_export_dir)
+        if path:
+            self.export_path_var.set(path)
+            self.last_export_dir = path
+            self.config["export_path"] = path
+            self.save_config()
 
     def show_breakdown(self):
         selected = self.orders_tree.focus()
