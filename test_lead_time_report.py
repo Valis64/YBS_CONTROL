@@ -1,5 +1,8 @@
 import unittest
 from datetime import datetime
+from io import StringIO
+from contextlib import redirect_stdout
+
 from lead_time_report import compute_lead_times
 
 
@@ -23,6 +26,22 @@ class LeadTimeTests(unittest.TestCase):
         self.assertEqual(len(res["1001"]), 2)
         self.assertAlmostEqual(res["1001"][0]["hours"], 4)
         self.assertAlmostEqual(res["1001"][1]["hours"], 2)
+
+    def test_compute_lead_times_show_breakdown_prints(self):
+        rows = [
+            {
+                "job_number": "1001",
+                "step": "print",
+                "time_in": datetime(2024, 1, 2, 8, 0),
+                "time_out": datetime(2024, 1, 2, 12, 0),
+            }
+        ]
+        buf = StringIO()
+        with redirect_stdout(buf):
+            res = compute_lead_times(rows, show_breakdown=True)
+        output = buf.getvalue()
+        self.assertIn("Breakdown for job 1001 step print:", output)
+        self.assertAlmostEqual(res["1001"][0]["hours"], 4)
 
 if __name__ == "__main__":
     unittest.main()

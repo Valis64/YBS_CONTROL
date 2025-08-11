@@ -3,7 +3,7 @@ from datetime import datetime
 from collections import defaultdict
 import argparse
 
-from time_utils import business_hours_delta
+from time_utils import business_hours_delta, business_hours_breakdown
 
 DATE_FORMAT = "%Y-%m-%d %H:%M:%S"
 
@@ -14,6 +14,11 @@ def parse_args():
     parser.add_argument("--start", help="Start date (YYYY-MM-DD)")
     parser.add_argument("--end", help="End date (YYYY-MM-DD)")
     parser.add_argument("--output", default="lead_time_report.csv", help="Output CSV path")
+    parser.add_argument(
+        "--show-breakdown",
+        action="store_true",
+        help="Print business hour segments for each row",
+    )
     return parser.parse_args()
 
 
@@ -29,15 +34,29 @@ def load_rows(path):
             }
 
 
-def compute_lead_times(rows, start_date=None, end_date=None):
+def compute_lead_times(rows, start_date=None, end_date=None, show_breakdown=False):
     results = defaultdict(list)
     for row in rows:
         if start_date and row["time_in"] < start_date:
             continue
         if end_date and row["time_out"] > end_date:
             continue
-        delta = business_hours_delta(row["time_in"], row["time_out"])
-        hours = delta.total_seconds() / 3600.0
+
+        if show_breakdown:
+            segments = business_hours_breakdown(row["time_in"], row["time_out"])
+            print(f"Breakdown for job {row['job_number']} step {row['step']}:")
+            total_seconds = 0.0
+            for seg_start, seg_end in segments:
+                seg_seconds = (seg_end - seg_start).total_seconds()
+                total_seconds += seg_seconds
+                print(
+                    f"  {seg_start} -> {seg_end} ({seg_seconds / 3600.0:.2f}h)"
+                )
+            hours = total_seconds / 3600.0
+        else:
+            delta = business_hours_delta(row["time_in"], row["time_out"])
+            hours = delta.total_seconds() / 3600.0
+
         results[row["job_number"]].append({"step": row["step"], "hours": hours})
     return results
 
@@ -57,7 +76,9 @@ def main():
     start_date = datetime.strptime(args.start, "%Y-%m-%d") if args.start else None
     end_date = datetime.strptime(args.end, "%Y-%m-%d") if args.end else None
     rows = list(load_rows(args.csv_file))
-    results = compute_lead_times(rows, start_date, end_date)
+    results = compute_lead_times(
+        rows, start_date, end_date, show_breakdown=args.show_breakdown
+    )
     write_report(results, args.output)
     print(f"Report written to {args.output}")
 
