@@ -257,7 +257,7 @@ def export_to_sheets(report: Dict[str, object], sheet_id: str) -> None:
         try:
             ws = spreadsheet.worksheet(title)
             ws.clear()
-        except gspread.WorksheetNotFound:
+        except Exception:
             ws = spreadsheet.add_worksheet(title=title, rows=rows_len, cols=cols)
         ws.update("A5", [headers] + rows)
 

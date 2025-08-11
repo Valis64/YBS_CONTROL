@@ -42,6 +42,7 @@ class YBSControlTests(unittest.TestCase):
         self.app.export_job = None
         # bind methods added after object creation
         self.app._run_scheduled_export = OrderScraperApp._run_scheduled_export.__get__(self.app)
+        self.app.run_production_report = OrderScraperApp.run_production_report.__get__(self.app)
 
     @patch("YBS_CONTROL.messagebox")
     def test_login_request_exception(self, mock_messagebox):
@@ -292,6 +293,29 @@ class YBSControlTests(unittest.TestCase):
         callbacks['func']()
         self.app.export_date_range.assert_called_once()
 
+
+    @patch("YBS_CONTROL.export_to_csv")
+    @patch("YBS_CONTROL.generate_production_report", return_value={})
+    @patch("YBS_CONTROL.messagebox")
+    def test_run_production_report_exports_csv(self, mock_messagebox, mock_gen, mock_export):
+        self.app.prod_start_var = SimpleVar("2024-01-01")
+        self.app.prod_end_var = SimpleVar("2024-01-02")
+        self.app.dest_type_var = SimpleVar("CSV")
+        self.app.dest_value_var = SimpleVar("/tmp")
+        self.app.load_production_events = MagicMock(return_value=[{"orderId": "1", "workstation": "Cut", "startTime": "2024-01-01T00:00:00", "endTime": "2024-01-01T01:00:00"}])
+        self.app.run_production_report()
+        mock_gen.assert_called_once()
+        mock_export.assert_called_once_with({}, "/tmp")
+        mock_messagebox.showinfo.assert_called_once()
+
+    @patch("YBS_CONTROL.messagebox")
+    def test_run_production_report_validates_dates(self, mock_messagebox):
+        self.app.prod_start_var = SimpleVar("2024-01-02")
+        self.app.prod_end_var = SimpleVar("2024-01-01")
+        self.app.dest_type_var = SimpleVar("CSV")
+        self.app.dest_value_var = SimpleVar("/tmp")
+        self.app.run_production_report()
+        mock_messagebox.showerror.assert_called_once()
 
 if __name__ == "__main__":
     unittest.main()
