@@ -202,7 +202,7 @@ class YBSControlTests(unittest.TestCase):
         self.assertEqual(time_utils.BUSINESS_START, time(9, 0))
         self.assertEqual(time_utils.BUSINESS_END, time(17, 0))
         tabs_added = [call.args[0] for call in mock_tabview.return_value.add.call_args_list]
-        self.assertIn("Analytics", tabs_added)
+        self.assertNotIn("Analytics", tabs_added)
         # reset defaults
         time_utils.BUSINESS_START = time(8, 0)
         time_utils.BUSINESS_END = time(16, 30)
