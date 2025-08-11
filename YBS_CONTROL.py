@@ -9,10 +9,16 @@ import sqlite3
 import re
 from datetime import datetime
 import json
+import logging
 
 from manage_html_report import compute_lead_times, write_report
 import time_utils
 from time_utils import business_hours_delta, business_hours_breakdown
+
+logging.basicConfig(
+    level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s"
+)
+logger = logging.getLogger(__name__)
 
 # Default login endpoint on ybsnow.com. The site currently posts the login form
 # to ``index.php`` with fields named "email", "password" and a hidden
@@ -323,8 +329,8 @@ class OrderScraperApp:
                     row = (order_num, company, status, priority)
                     self.order_rows.append(row)
                     self.orders_tree.insert('', 'end', values=row)
-                except Exception as e:
-                    print("Error parsing row:", e)
+                except Exception:
+                    logger.exception("Error parsing row")
         self.refresh_database_tab()
 
     def log_order(self, order_number, company, steps):
