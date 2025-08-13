@@ -3,6 +3,8 @@ import json
 import sys
 from io import StringIO
 
+import pytest
+
 from production_report import generate_production_report, export_to_csv, main
 
 
@@ -75,3 +77,26 @@ def test_main_writes_csv(tmp_path):
 
     assert (tmp_path / "Summary.csv").exists()
     assert (tmp_path / "Details.csv").exists()
+
+
+def test_main_invalid_json(tmp_path, capsys):
+    stdin = StringIO("not json")
+    old_stdin = sys.stdin
+    try:
+        sys.stdin = stdin
+        with pytest.raises(SystemExit) as exc:
+            main(
+                [
+                    "--start",
+                    "2024-01-01T00:00:00Z",
+                    "--end",
+                    "2024-01-02T00:00:00Z",
+                    "--csv-dir",
+                    str(tmp_path),
+                ]
+            )
+    finally:
+        sys.stdin = old_stdin
+    assert exc.value.code == 2
+    captured = capsys.readouterr()
+    assert "Invalid JSON" in captured.err

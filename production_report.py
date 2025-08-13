@@ -350,7 +350,11 @@ def main(argv: List[str] | None = None) -> None:
     group.add_argument("--csv-dir", help="Directory to write CSV files")
     args = parser.parse_args(argv)
 
-    events = json.load(sys.stdin)
+    try:
+        events = json.load(sys.stdin)
+    except json.JSONDecodeError:
+        parser.error("Invalid JSON input")
+
     report = generate_production_report(events, args.start, args.end, args.timezone)
 
     if args.sheet_id:
