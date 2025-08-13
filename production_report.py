@@ -198,6 +198,44 @@ def _build_summary_table(report: Dict[str, object]):
     return headers, rows
 
 
+def _build_order_summary_table(report: Dict[str, object]):
+    """Return headers and rows summarising hours by order.
+
+    The table has one column for the order identifier, one column for each
+    workstation appearing in the data and a final ``Order Total`` column.
+    A ``Totals`` row summarises hours per workstation and the grand total.
+    """
+
+    summary = report.get("summary", [])
+
+    workstations = sorted({ws for s in summary for ws in s.get("workstations", {})})
+    headers = ["Order ID", *workstations, "Order Total"]
+
+    rows: List[List[str]] = []
+    totals = {ws: 0.0 for ws in workstations}
+    grand_total = 0.0
+
+    for s in summary:
+        ws_totals = s.get("workstations", {})
+        order_total = s.get("order_total", 0.0)
+        row = [s.get("orderId")]
+        for ws in workstations:
+            val = ws_totals.get(ws, 0.0)
+            row.append(f"{val:.2f}")
+            totals[ws] += val
+        row.append(f"{order_total:.2f}")
+        rows.append(row)
+        grand_total += order_total
+
+    total_row = ["Totals"]
+    for ws in workstations:
+        total_row.append(f"{totals[ws]:.2f}")
+    total_row.append(f"{grand_total:.2f}")
+    rows.append(total_row)
+
+    return headers, rows
+
+
 def _build_detail_table(report: Dict[str, object]):
     """Return headers and rows for the detail portion of ``report``."""
 
@@ -328,7 +366,7 @@ def export_to_sheets(report: Dict[str, object], sheet_id: str) -> None:
             }
         )
 
-    summary_headers, summary_rows = _build_summary_table(report)
+    summary_headers, summary_rows = _build_order_summary_table(report)
     detail_headers, detail_rows = _build_detail_table(report)
     _upsert_ws("Summary", summary_headers, summary_rows)
     _upsert_ws("Details", detail_headers, detail_rows)

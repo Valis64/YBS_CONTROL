@@ -434,10 +434,25 @@ class YBSControlTests(unittest.TestCase):
         self.app.load_jobs_by_date_range = MagicMock(return_value=rows)
         self.app.run_date_range_report()
         insert_calls = self.app.date_tree.insert.call_args_list
-        self.assertEqual(len(insert_calls), 3)
-        group_values = {call.kwargs["values"] for call in insert_calls[:-1]}
-        self.assertEqual(group_values, {("WS1", "2.00"), ("WS2", "3.00")})
-        self.assertEqual(insert_calls[-1].kwargs["values"], ("TOTAL", "5.00"))
+        self.assertEqual(len(insert_calls), 5)
+        self.assertEqual(insert_calls[0].kwargs["text"], "1")
+        self.assertEqual(
+            insert_calls[1].kwargs["values"],
+            ("", "WS1", "2.00", "2024-01-01", "2024-01-01"),
+        )
+        self.assertEqual(insert_calls[2].kwargs["text"], "2")
+        self.assertEqual(
+            insert_calls[3].kwargs["values"],
+            ("", "WS2", "3.00", "2024-01-02", ""),
+        )
+        self.assertEqual(
+            insert_calls[4].kwargs["text"],
+            "TOTAL",
+        )
+        self.assertEqual(
+            insert_calls[4].kwargs["values"],
+            ("", "", "5.00", "", ""),
+        )
         self.assertEqual(self.app.range_total_jobs_var.get(), "2")
         self.assertEqual(self.app.range_total_hours_var.get(), "5.00")
 
