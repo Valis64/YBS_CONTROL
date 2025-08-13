@@ -113,6 +113,54 @@ def generate_realtime_report(jobs, start_date=None, end_date=None):
     return report
 
 
+def write_realtime_report(report, csv_path, html_path):
+    """Write a realtime lead time report to CSV and HTML.
+
+    ``report`` should be a sequence as returned by
+    :func:`generate_realtime_report`. Rows are sorted chronologically by the
+    ``start`` timestamp. ``csv_path`` and ``html_path`` specify output file
+    locations for the CSV data and HTML table respectively.
+    """
+
+    # sort by start time to ensure chronological order
+    rows = sorted(report, key=lambda r: r[2])
+    headers = ["job_number", "workstation", "start", "end", "hours_in_queue"]
+
+    # write CSV output
+    with open(csv_path, "w", newline="") as f:
+        writer = csv.writer(f)
+        writer.writerow(headers)
+        for job, workstation, start, end, hours in rows:
+            writer.writerow(
+                [
+                    job,
+                    workstation,
+                    start.strftime(HTML_DATE_FORMAT),
+                    end.strftime(HTML_DATE_FORMAT),
+                    f"{hours:.2f}",
+                ]
+            )
+
+    # build HTML table
+    html_lines = ["<table>", "<thead><tr>"]
+    for h in headers:
+        html_lines.append(f"<th>{h}</th>")
+    html_lines.extend(["</tr></thead>", "<tbody>"])
+    for job, workstation, start, end, hours in rows:
+        html_lines.append(
+            "<tr>"
+            f"<td>{job}</td>"
+            f"<td>{workstation}</td>"
+            f"<td>{start.strftime(HTML_DATE_FORMAT)}</td>"
+            f"<td>{end.strftime(HTML_DATE_FORMAT)}</td>"
+            f"<td>{hours:.2f}</td>"
+            "</tr>"
+        )
+    html_lines.extend(["</tbody>", "</table>"])
+    with open(html_path, "w", encoding="utf-8") as f:
+        f.write("\n".join(html_lines))
+
+
 def write_report(results, path):
     """Write lead time data to ``path`` including timestamps."""
     with open(path, "w", newline="") as f:
