@@ -6,7 +6,11 @@ import sys
 import argparse
 
 import manage_html_report
-from manage_html_report import compute_lead_times, parse_manage_html
+from manage_html_report import (
+    compute_lead_times,
+    parse_manage_html,
+    generate_realtime_report,
+)
 
 SAMPLE_HTML = """
 <tbody id="table">
@@ -94,8 +98,19 @@ class ManageHTMLTests(unittest.TestCase):
         results = compute_lead_times(jobs)
         entry = results["1001"][0]
         self.assertAlmostEqual(entry["hours"], 13.5)
-        self.assertIsInstance(entry["start"], datetime)
-        self.assertIsInstance(entry["end"], datetime)
+        self.assertEqual(entry["start"], datetime(2025, 7, 22, 10, 0))
+        self.assertEqual(entry["end"], datetime(2025, 7, 23, 15, 0))
+
+    def test_generate_realtime_report(self):
+        jobs = parse_manage_html(self.tmp_path)
+        report = generate_realtime_report(jobs)
+        self.assertEqual(len(report), 1)
+        order, workstation, start, end, hours = report[0]
+        self.assertEqual(order, "1001")
+        self.assertEqual(workstation, "Indigo")
+        self.assertEqual(start, datetime(2025, 7, 22, 10, 0))
+        self.assertEqual(end, datetime(2025, 7, 23, 15, 0))
+        self.assertAlmostEqual(hours, 13.5)
 
     def test_compute_lead_times_date_range(self):
         jobs = parse_manage_html(self.tmp_path)

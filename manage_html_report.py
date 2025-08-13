@@ -88,6 +88,31 @@ def compute_lead_times(jobs, start_date=None, end_date=None):
     return results
 
 
+def generate_realtime_report(jobs, start_date=None, end_date=None):
+    """Generate a realtime style report of lead times.
+
+    The returned value is a list of tuples ordered the same way the jobs appear
+    in ``manage.html``. Each tuple contains ``(order, workstation, start, end,
+    hours)`` where ``start`` and ``end`` are ``datetime`` objects and ``hours``
+    is the number of business hours between them.
+    """
+
+    lead_times = compute_lead_times(jobs, start_date, end_date)
+    report = []
+    for order in jobs:  # preserve realtime ordering
+        for step in lead_times.get(order, []):
+            report.append(
+                (
+                    order,
+                    step["workstation"],
+                    step["start"],
+                    step["end"],
+                    step["hours"],
+                )
+            )
+    return report
+
+
 def write_report(results, path):
     """Write lead time data to ``path`` including timestamps."""
     with open(path, "w", newline="") as f:
