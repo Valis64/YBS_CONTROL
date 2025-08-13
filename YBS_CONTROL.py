@@ -363,13 +363,24 @@ class OrderScraperApp:
         table_frame.grid(row=2, column=0, columnspan=6, sticky="nsew", padx=10, pady=10)
 
         columns = (
+            "customer",
             "workstation",
             "hours",
+            "start",
+            "end",
         )
-        self.date_tree = ttk.Treeview(table_frame, columns=columns, show="headings")
+        self.date_tree = ttk.Treeview(
+            table_frame, columns=columns, show="tree headings"
+        )
+        self.date_tree.heading(
+            "#0", text="Order", command=lambda: self.sort_date_range_table("order")
+        )
         headings = [
+            "Customer",
             "Workstation",
             "Hours",
+            "Start",
+            "End",
         ]
         for col, head in zip(columns, headings):
             self.date_tree.heading(col, text=head, command=lambda c=col: self.sort_date_range_table(c))
@@ -1188,21 +1199,31 @@ class OrderScraperApp:
         total = 0.0
         for idx, r in enumerate(rows):
             tags = ["even" if idx % 2 == 0 else "odd"]
-            values = (
-                r["workstation"],
-                f"{r['hours']:.2f}",
+            parent = self.date_tree.insert(
+                "",
+                "end",
+                text=r["order"],
+                values=(r["customer"], "", f"{r['hours']:.2f}", "", ""),
+                tags=tags,
             )
-            self.date_tree.insert("", "end", values=values, tags=tags)
+            for ws in r.get("workstations", []):
+                self.date_tree.insert(
+                    parent,
+                    "end",
+                    text="",
+                    values=("", ws["workstation"], f"{ws['hours']:.2f}", ws["start"], ws["end"]),
+                )
             total += r["hours"]
         self.date_tree.insert(
             "",
             "end",
-            values=("TOTAL", f"{total:.2f}"),
+            text="TOTAL",
+            values=("", "", f"{total:.2f}", "", ""),
             tags=("total",),
         )
 
     def update_date_range_summary(self, rows):
-        total_jobs = len(rows)
+        total_jobs = len({r["order"] for r in rows})
         total_hours = sum(r["hours"] for r in rows)
         self.range_total_jobs_var.set(str(total_jobs))
         self.range_total_hours_var.set(f"{total_hours:.2f}")
@@ -1216,25 +1237,50 @@ class OrderScraperApp:
         self.raw_date_range_rows = list(rows)
         grouped = {}
         for r in rows:
-            ws = r.get("workstation", "")
-            grouped[ws] = grouped.get(ws, 0.0) + (r.get("hours") or 0.0)
-        grouped_rows = [
-            {"workstation": ws, "hours": hrs}
-            for ws, hrs in grouped.items()
-        ]
+            order = r.get("order")
+            g = grouped.setdefault(
+                order,
+                {
+                    "order": order,
+                    "customer": r.get("customer", ""),
+                    "hours": 0.0,
+                    "workstations": [],
+                },
+            )
+            g["hours"] += r.get("hours") or 0.0
+            g["workstations"].append(
+                {
+                    "workstation": r.get("workstation", ""),
+                    "hours": r.get("hours") or 0.0,
+                    "start": r.get("start", ""),
+                    "end": r.get("end", ""),
+                }
+            )
+        grouped_rows = list(grouped.values())
         self.date_range_rows = grouped_rows
         self.filtered_date_range_rows = list(grouped_rows)
         self.populate_date_range_table(grouped_rows)
         self.update_date_range_summary(self.raw_date_range_rows)
 
     def sort_date_range_table(self, column, reverse=False):
-        key = column
-        self.filtered_date_range_rows.sort(key=lambda r: r[key], reverse=reverse)
+        key_funcs = {
+            "order": lambda r: r["order"],
+            "customer": lambda r: r["customer"],
+            "hours": lambda r: r["hours"],
+        }
+        if column not in key_funcs:
+            return
+        self.filtered_date_range_rows.sort(key=key_funcs[column], reverse=reverse)
         self.populate_date_range_table(self.filtered_date_range_rows)
         self.update_date_range_summary(self.raw_date_range_rows)
-        self.date_tree.heading(
-            column, command=lambda: self.sort_date_range_table(column, not reverse)
-        )
+        if column == "order":
+            self.date_tree.heading(
+                "#0", command=lambda: self.sort_date_range_table(column, not reverse)
+            )
+        else:
+            self.date_tree.heading(
+                column, command=lambda: self.sort_date_range_table(column, not reverse)
+            )
 
     def clear_date_range_report(self):
         self.range_start_var.set("")
