@@ -36,6 +36,7 @@ def load_rows(path):
 
 def compute_lead_times(rows, start_date=None, end_date=None, show_breakdown=False):
     results = defaultdict(list)
+    breakdowns = defaultdict(list) if show_breakdown else None
     for row in rows:
         if start_date and row["time_in"] < start_date:
             continue
@@ -44,21 +45,32 @@ def compute_lead_times(rows, start_date=None, end_date=None, show_breakdown=Fals
 
         if show_breakdown:
             segments = business_hours_breakdown(row["time_in"], row["time_out"])
-            print(f"Breakdown for job {row['job_number']} step {row['step']}:")
-            total_seconds = 0.0
-            for seg_start, seg_end in segments:
-                seg_seconds = (seg_end - seg_start).total_seconds()
-                total_seconds += seg_seconds
-                print(
-                    f"  {seg_start} -> {seg_end} ({seg_seconds / 3600.0:.2f}h)"
-                )
-            hours = total_seconds / 3600.0
+            total_seconds = sum(
+                (seg_end - seg_start).total_seconds() for seg_start, seg_end in segments
+            )
+            breakdowns[row["job_number"]].append(
+                {"step": row["step"], "segments": segments}
+            )
         else:
             delta = business_hours_delta(row["time_in"], row["time_out"])
-            hours = delta.total_seconds() / 3600.0
+            total_seconds = delta.total_seconds()
 
+        hours = total_seconds / 3600.0
         results[row["job_number"]].append({"step": row["step"], "hours": hours})
+
+    if show_breakdown:
+        return results, breakdowns
     return results
+
+
+def format_breakdown(job_number, step_name, segments):
+    lines = [f"Breakdown for job {job_number} step {step_name}:"]
+    for seg_start, seg_end in segments:
+        seg_seconds = (seg_end - seg_start).total_seconds()
+        lines.append(
+            f"  {seg_start} -> {seg_end} ({seg_seconds / 3600.0:.2f}h)"
+        )
+    return "\n".join(lines)
 
 
 def write_report(results, path):
@@ -76,9 +88,16 @@ def main():
     start_date = datetime.strptime(args.start, "%Y-%m-%d") if args.start else None
     end_date = datetime.strptime(args.end, "%Y-%m-%d") if args.end else None
     rows = list(load_rows(args.csv_file))
-    results = compute_lead_times(
+    res = compute_lead_times(
         rows, start_date, end_date, show_breakdown=args.show_breakdown
     )
+    if args.show_breakdown:
+        results, breakdowns = res
+        for job, entries in breakdowns.items():
+            for entry in entries:
+                print(format_breakdown(job, entry["step"], entry["segments"]))
+    else:
+        results = res
     write_report(results, args.output)
     print(f"Report written to {args.output}")
 
