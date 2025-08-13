@@ -28,7 +28,7 @@ def load_rows(path):
         for row in reader:
             yield {
                 "job_number": row.get("job_number"),
-                "step": row.get("step"),
+                "workstation": row.get("workstation"),
                 "time_in": datetime.strptime(row.get("time_in"), DATE_FORMAT),
                 "time_out": datetime.strptime(row.get("time_out"), DATE_FORMAT),
             }
@@ -49,22 +49,22 @@ def compute_lead_times(rows, start_date=None, end_date=None, show_breakdown=Fals
                 (seg_end - seg_start).total_seconds() for seg_start, seg_end in segments
             )
             breakdowns[row["job_number"]].append(
-                {"step": row["step"], "segments": segments}
+                {"workstation": row["workstation"], "segments": segments}
             )
         else:
             delta = business_hours_delta(row["time_in"], row["time_out"])
             total_seconds = delta.total_seconds()
 
         hours = total_seconds / 3600.0
-        results[row["job_number"]].append({"step": row["step"], "hours": hours})
+        results[row["job_number"]].append({"workstation": row["workstation"], "hours": hours})
 
     if show_breakdown:
         return results, breakdowns
     return results
 
 
-def format_breakdown(job_number, step_name, segments):
-    lines = [f"Breakdown for job {job_number} step {step_name}:"]
+def format_breakdown(job_number, workstation_name, segments):
+    lines = [f"Breakdown for job {job_number} workstation {workstation_name}:"]
     for seg_start, seg_end in segments:
         seg_seconds = (seg_end - seg_start).total_seconds()
         lines.append(
@@ -75,12 +75,18 @@ def format_breakdown(job_number, step_name, segments):
 
 def write_report(results, path):
     with open(path, "w", newline="") as f:
-        fieldnames = ["job_number", "step", "hours_in_queue"]
+        fieldnames = ["job_number", "workstation", "hours_in_queue"]
         writer = csv.DictWriter(f, fieldnames=fieldnames)
         writer.writeheader()
         for job, steps in results.items():
             for step in steps:
-                writer.writerow({"job_number": job, "step": step["step"], "hours_in_queue": f"{step['hours']:.2f}"})
+                writer.writerow(
+                    {
+                        "job_number": job,
+                        "workstation": step["workstation"],
+                        "hours_in_queue": f"{step['hours']:.2f}",
+                    }
+                )
 
 
 def main():
@@ -97,7 +103,11 @@ def main():
         results, breakdowns = res
         for job, entries in breakdowns.items():
             for entry in entries:
-                print(format_breakdown(job, entry["step"], entry["segments"]))
+                print(
+                    format_breakdown(
+                        job, entry["workstation"], entry["segments"]
+                    )
+                )
     else:
         results = res
     write_report(results, args.output)
