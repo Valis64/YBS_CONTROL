@@ -393,6 +393,7 @@ class OrderScraperApp:
         self.date_tree.tag_configure("even", background="#ffffff")
         self.date_tree.tag_configure("odd", background="#f0f0ff")
         self.date_tree.tag_configure("total", background="#e0e0e0", font=("Arial", 10, "bold"))
+        self.date_tree.bind("<Double-1>", self.toggle_order_row)
 
         summary = ctk.CTkFrame(self.date_range_tab)
         summary.grid(row=3, column=0, columnspan=6, sticky="ew", padx=10, pady=5)
@@ -1205,6 +1206,7 @@ class OrderScraperApp:
                 text=r["order"],
                 values=(r["customer"], "", f"{r['hours']:.2f}", "", ""),
                 tags=tags,
+                open=False,
             )
             for ws in r.get("workstations", []):
                 self.date_tree.insert(
@@ -1221,6 +1223,14 @@ class OrderScraperApp:
             values=("", "", f"{total:.2f}", "", ""),
             tags=("total",),
         )
+
+    def toggle_order_row(self, event):
+        item = self.date_tree.identify_row(event.y)
+        if not item:
+            return
+        if self.date_tree.parent(item) == "" and self.date_tree.get_children(item):
+            is_open = self.date_tree.item(item, "open")
+            self.date_tree.item(item, open=not is_open)
 
     def update_date_range_summary(self, rows):
         total_jobs = len({r["order"] for r in rows})

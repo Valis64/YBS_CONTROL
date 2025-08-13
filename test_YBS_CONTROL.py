@@ -1,5 +1,6 @@
 import unittest
 from unittest.mock import MagicMock, patch
+from types import SimpleNamespace
 import requests
 import os
 
@@ -100,6 +101,7 @@ class YBSControlTests(unittest.TestCase):
         self.app.sort_date_range_table = OrderScraperApp.sort_date_range_table.__get__(self.app)
         self.app.clear_date_range_report = OrderScraperApp.clear_date_range_report.__get__(self.app)
         self.app.export_realtime_report = OrderScraperApp.export_realtime_report.__get__(self.app)
+        self.app.toggle_order_row = OrderScraperApp.toggle_order_row.__get__(self.app)
 
     @patch("YBS_CONTROL.messagebox")
     def test_get_orders_request_exception(self, mock_messagebox):
@@ -436,11 +438,13 @@ class YBSControlTests(unittest.TestCase):
         insert_calls = self.app.date_tree.insert.call_args_list
         self.assertEqual(len(insert_calls), 5)
         self.assertEqual(insert_calls[0].kwargs["text"], "1")
+        self.assertFalse(insert_calls[0].kwargs["open"])
         self.assertEqual(
             insert_calls[1].kwargs["values"],
             ("", "WS1", "2.00", "2024-01-01", "2024-01-01"),
         )
         self.assertEqual(insert_calls[2].kwargs["text"], "2")
+        self.assertFalse(insert_calls[2].kwargs["open"])
         self.assertEqual(
             insert_calls[3].kwargs["values"],
             ("", "WS2", "3.00", "2024-01-02", ""),
@@ -455,6 +459,27 @@ class YBSControlTests(unittest.TestCase):
         )
         self.assertEqual(self.app.range_total_jobs_var.get(), "2")
         self.assertEqual(self.app.range_total_hours_var.get(), "5.00")
+
+    def test_toggle_order_row(self):
+        tree = MagicMock()
+        self.app.date_tree = tree
+        event = SimpleNamespace(y=10)
+        tree.identify_row.return_value = "order1"
+        tree.parent.return_value = ""
+        tree.get_children.return_value = ["child1"]
+        state = {"open": True}
+
+        def item_side_effect(item, option=None, **kw):
+            if option is not None:
+                return state[option]
+            if "open" in kw:
+                state["open"] = kw["open"]
+
+        tree.item.side_effect = item_side_effect
+        self.app.toggle_order_row(event)
+        self.assertFalse(state["open"])
+        self.app.toggle_order_row(event)
+        self.assertTrue(state["open"])
 
 if __name__ == "__main__":
     unittest.main()
