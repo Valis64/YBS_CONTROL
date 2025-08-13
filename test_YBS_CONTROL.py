@@ -99,6 +99,7 @@ class YBSControlTests(unittest.TestCase):
         self.app.update_date_range_summary = OrderScraperApp.update_date_range_summary.__get__(self.app)
         self.app.sort_date_range_table = OrderScraperApp.sort_date_range_table.__get__(self.app)
         self.app.clear_date_range_report = OrderScraperApp.clear_date_range_report.__get__(self.app)
+        self.app.export_realtime_report = OrderScraperApp.export_realtime_report.__get__(self.app)
 
     @patch("YBS_CONTROL.messagebox")
     def test_get_orders_request_exception(self, mock_messagebox):
@@ -327,6 +328,22 @@ class YBSControlTests(unittest.TestCase):
         self.assertIn('func', callbacks)
         callbacks['func']()
         self.app.export_date_range.assert_called_once()
+
+    @patch("YBS_CONTROL.write_realtime_report")
+    @patch("YBS_CONTROL.generate_realtime_report", return_value=[("123", "Cut", datetime(2024, 1, 1, 8, 0), datetime(2024, 1, 1, 9, 0), 1.0)])
+    @patch("YBS_CONTROL.messagebox")
+    def test_export_realtime_report(self, mock_messagebox, mock_generate, mock_write):
+        self.app.start_date_var = SimpleVar("")
+        self.app.end_date_var = SimpleVar("")
+        cursor = MagicMock()
+        cursor.fetchall.return_value = [("123",)]
+        self.app.db = MagicMock()
+        self.app.db.cursor.return_value = cursor
+        self.app.load_steps = MagicMock(return_value=[])
+        self.app.export_realtime_report()
+        mock_generate.assert_called_once()
+        mock_write.assert_called_once()
+        mock_messagebox.showinfo.assert_called()
 
 
     @patch("YBS_CONTROL._build_detail_table", return_value=(["A"], [[1]]))
