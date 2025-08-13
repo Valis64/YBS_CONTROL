@@ -14,7 +14,12 @@ from tkcalendar import DateEntry
 
 from matplotlib.figure import Figure
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
-from manage_html_report import compute_lead_times, write_report
+from manage_html_report import (
+    compute_lead_times,
+    write_report,
+    generate_realtime_report,
+    write_realtime_report,
+)
 import time_utils
 from time_utils import business_hours_delta, business_hours_breakdown
 from production_report import (
@@ -251,6 +256,9 @@ class OrderScraperApp:
 
         ctk.CTkButton(self.orders_tab, text="Export Report", command=self.export_selected).pack(pady=5)
         ctk.CTkButton(self.orders_tab, text="Export Date Range", command=self.export_date_range).pack(pady=5)
+        ctk.CTkButton(
+            self.orders_tab, text="Realtime Report", command=self.export_realtime_report
+        ).pack(pady=5)
         ctk.CTkButton(self.orders_tab, text="Show Breakdown", command=self.show_breakdown).pack(pady=5)
         ctk.CTkButton(self.orders_tab, text="Refresh Orders", command=self.get_orders).pack(pady=5)
         ctk.CTkButton(self.orders_tab, text="Open Analytics", command=self.open_analytics_window).pack(pady=5)
@@ -854,6 +862,29 @@ class OrderScraperApp:
         path = os.path.join(export_dir, f"lead_time_{s}_{e}.csv")
         write_report(results, path)
         messagebox.showinfo("Export", f"Report written to {path}")
+
+    def export_realtime_report(self):
+        """Export a realtime lead time report for the selected date range."""
+        start, end = self.get_date_range()
+        cur = self.db.cursor()
+        cur.execute("SELECT DISTINCT order_number FROM steps")
+        orders = [r[0] for r in cur.fetchall()]
+        jobs = {order: self.load_steps(order) for order in orders}
+        report = generate_realtime_report(jobs, start, end)
+        if not report:
+            messagebox.showinfo("Export", "No data for range")
+            return
+        export_dir = self.export_path_var.get().strip() or os.getcwd()
+        os.makedirs(export_dir, exist_ok=True)
+        s = start.strftime("%Y%m%d") if start else "begin"
+        e = end.strftime("%Y%m%d") if end else "now"
+        csv_path = os.path.join(export_dir, f"realtime_{s}_{e}.csv")
+        html_path = os.path.join(export_dir, f"realtime_{s}_{e}.html")
+        write_realtime_report(report, csv_path, html_path)
+        logger.info("Realtime report written to %s and %s", csv_path, html_path)
+        messagebox.showinfo(
+            "Export", f"Realtime report written to {csv_path} and {html_path}"
+        )
 
     def schedule_auto_refresh(self):
         if not self.logged_in:
