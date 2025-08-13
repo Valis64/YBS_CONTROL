@@ -3,7 +3,7 @@ from datetime import datetime
 from io import StringIO
 from contextlib import redirect_stdout
 
-from lead_time_report import compute_lead_times
+from lead_time_report import compute_lead_times, format_breakdown
 
 
 class LeadTimeTests(unittest.TestCase):
@@ -38,7 +38,10 @@ class LeadTimeTests(unittest.TestCase):
         ]
         buf = StringIO()
         with redirect_stdout(buf):
-            res = compute_lead_times(rows, show_breakdown=True)
+            res, breakdowns = compute_lead_times(rows, show_breakdown=True)
+            for job, entries in breakdowns.items():
+                for entry in entries:
+                    print(format_breakdown(job, entry["step"], entry["segments"]))
         output = buf.getvalue()
         self.assertIn("Breakdown for job 1001 step print:", output)
         self.assertAlmostEqual(res["1001"][0]["hours"], 4)
