@@ -551,7 +551,7 @@ class OrderScraperApp:
                 "INSERT INTO lead_times(order_number, workstation, start, end, hours) VALUES (?, ?, ?, ?, ?)",
                 (
                     order_number,
-                    item["step"],
+                    item["workstation"],
                     item["start"].isoformat(sep=" "),
                     item["end"].isoformat(sep=" "),
                     item["hours"],
@@ -586,7 +586,7 @@ class OrderScraperApp:
         cur.execute(query, params)
         rows = [
             {
-                "step": r[0],
+                "workstation": r[0],
                 "start": datetime.fromisoformat(r[1]),
                 "end": datetime.fromisoformat(r[2]),
                 "hours": r[3],
@@ -751,14 +751,14 @@ class OrderScraperApp:
                     "INSERT INTO lead_times(order_number, workstation, start, end, hours) VALUES (?, ?, ?, ?, ?)",
                     (
                         order_number,
-                        item["step"],
+                        item["workstation"],
                         item["start"].isoformat(sep=" "),
                         item["end"].isoformat(sep=" "),
                         item["hours"],
                     ),
                 )
             self.db.commit()
-        row_map = {r["step"]: r for r in rows}
+        row_map = {r["workstation"]: r for r in rows}
         self.report_tree.delete(*self.report_tree.get_children())
         total = 0.0
         for idx, (name, ts) in enumerate(steps):

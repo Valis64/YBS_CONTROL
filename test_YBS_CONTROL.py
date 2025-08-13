@@ -203,7 +203,7 @@ class YBSControlTests(unittest.TestCase):
         self.app.analytics_job_var = SimpleVar("")
         self.app.order_rows = [("123", "ACME", "Running", "High")]
         self.app.load_steps = MagicMock(return_value=[("Cutting", datetime(2024, 1, 1, 8, 0)), ("Welding", datetime(2024, 1, 1, 12, 0))])
-        mock_compute.return_value = {"123": [{"hours": 4, "step": "Welding"}]}
+        mock_compute.return_value = {"123": [{"hours": 4, "workstation": "Welding"}]}
         OrderScraperApp.update_analytics_chart(self.app)
         mock_compute.assert_called_once()
         self.app.analytics_ax.bar.assert_called_once()

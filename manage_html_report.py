@@ -79,7 +79,7 @@ def compute_lead_times(jobs, start_date=None, end_date=None):
             hours = delta.total_seconds() / 3600.0
             results[job].append(
                 {
-                    "step": next_name,
+                    "workstation": next_name,
                     "hours": hours,
                     "start": start,
                     "end": end,
@@ -99,7 +99,7 @@ def write_report(results, path):
                 writer.writerow(
                     {
                         "job_number": job,
-                        "workstation": step["step"],
+                        "workstation": step["workstation"],
                         "hours_in_queue": f"{step['hours']:.2f}",
                         "start": step["start"].isoformat(sep=" "),
                         "end": step["end"].isoformat(sep=" "),
