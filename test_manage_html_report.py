@@ -2,7 +2,10 @@ import os
 import tempfile
 import unittest
 from datetime import datetime
+import sys
+import argparse
 
+import manage_html_report
 from manage_html_report import compute_lead_times, parse_manage_html
 
 SAMPLE_HTML = """
@@ -99,6 +102,23 @@ class ManageHTMLTests(unittest.TestCase):
         start = datetime(2025, 7, 23)
         results = compute_lead_times(jobs, start_date=start)
         self.assertEqual(len(results["1001"]), 0)
+
+    def test_main_invalid_date_range(self):
+        argv = [
+            "manage_html_report.py",
+            "dummy.html",
+            "--start",
+            "2025-07-24",
+            "--end",
+            "2025-07-23",
+        ]
+        old_argv = sys.argv
+        try:
+            sys.argv = argv
+            with self.assertRaises(argparse.ArgumentTypeError):
+                manage_html_report.main()
+        finally:
+            sys.argv = old_argv
 
 
 if __name__ == "__main__":

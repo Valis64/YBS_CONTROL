@@ -87,6 +87,8 @@ def main():
     args = parse_args()
     start_date = datetime.strptime(args.start, "%Y-%m-%d") if args.start else None
     end_date = datetime.strptime(args.end, "%Y-%m-%d") if args.end else None
+    if start_date and end_date and end_date < start_date:
+        raise argparse.ArgumentTypeError("--end must be on or after --start")
     rows = list(load_rows(args.csv_file))
     res = compute_lead_times(
         rows, start_date, end_date, show_breakdown=args.show_breakdown

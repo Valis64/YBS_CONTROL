@@ -109,9 +109,11 @@ def write_report(results, path):
 
 def main():
     args = parse_args()
-    jobs = parse_manage_html(args.html_file)
     start = datetime.strptime(args.start, "%Y-%m-%d") if args.start else None
     end = datetime.strptime(args.end, "%Y-%m-%d") if args.end else None
+    if start and end and end < start:
+        raise argparse.ArgumentTypeError("--end must be on or after --start")
+    jobs = parse_manage_html(args.html_file)
     results = compute_lead_times(jobs, start, end)
     write_report(results, args.output)
     print(f"Report written to {args.output}")
