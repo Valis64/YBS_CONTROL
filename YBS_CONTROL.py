@@ -1224,7 +1224,7 @@ class OrderScraperApp:
                 "",
                 "end",
                 text=r["order"],
-                values=(r["customer"], "", "", "", f"{r['hours']:.2f}", r.get("status", "")),
+                values=(r["customer"], r.get("status", ""), f"{r['hours']:.2f}", "", ""),
                 tags=tags,
                 open=False,
             )
@@ -1233,14 +1233,14 @@ class OrderScraperApp:
                     parent,
                     "end",
                     text="",
-                    values=("", ws["workstation"], ws["start"], ws["end"], f"{ws['hours']:.2f}", ""),
+                    values=("", ws["workstation"], f"{ws['hours']:.2f}", ws["start"], ws["end"]),
                 )
             total += r["hours"]
         self.date_tree.insert(
             "",
             "end",
             text="TOTAL",
-            values=("", "", "", "", f"{total:.2f}", ""),
+            values=("", "", f"{total:.2f}", "", ""),
             tags=("total",),
         )
 
@@ -1264,7 +1264,7 @@ class OrderScraperApp:
             messagebox.showerror("Date Range Report", "Start and end dates are required")
             return
         rows = self.load_jobs_by_date_range(start, end)
-        self.raw_date_range_rows = list(rows)
+        raw_rows = list(rows)
         grouped = {}
         for r in rows:
             order = r.get("order")
@@ -1290,7 +1290,49 @@ class OrderScraperApp:
             )
             if not end_time:
                 g["status"] = "In Progress"
+
+        # Include missing steps for each order
+        for order, g in grouped.items():
+            steps = self.load_steps(order)
+            existing = {ws["workstation"] for ws in g["workstations"]}
+            prev_ts = None
+            for step_name, ts in steps:
+                if step_name not in existing:
+                    start_str = prev_ts.strftime("%Y-%m-%d") if prev_ts else ""
+                    end_str = ts.strftime("%Y-%m-%d") if ts else ""
+                    hours = (
+                        business_hours_delta(prev_ts, ts)
+                        if prev_ts and ts
+                        else 0.0
+                    )
+                    g["workstations"].append(
+                        {
+                            "workstation": step_name,
+                            "hours": hours,
+                            "start": start_str,
+                            "end": end_str,
+                        }
+                    )
+                    g["hours"] += hours
+                    status = "Completed" if end_str else "In Progress"
+                    raw_rows.append(
+                        {
+                            "order": order,
+                            "customer": g.get("customer", ""),
+                            "workstation": step_name,
+                            "hours": hours,
+                            "start": start_str,
+                            "end": end_str,
+                            "status": status,
+                        }
+                    )
+                    existing.add(step_name)
+                    if not end_str:
+                        g["status"] = "In Progress"
+                prev_ts = ts
+
         grouped_rows = list(grouped.values())
+        self.raw_date_range_rows = raw_rows
         self.date_range_rows = grouped_rows
         self.filtered_date_range_rows = list(grouped_rows)
         self.filtered_raw_date_range_rows = list(self.raw_date_range_rows)
