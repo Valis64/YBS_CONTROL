@@ -419,7 +419,6 @@ class YBSControlTests(unittest.TestCase):
                 "customer": "A",
                 "workstation": "WS1",
                 "hours": 2.0,
-                "status": "Completed",
                 "start": "2024-01-01",
                 "end": "2024-01-01",
             },
@@ -428,7 +427,6 @@ class YBSControlTests(unittest.TestCase):
                 "customer": "B",
                 "workstation": "WS2",
                 "hours": 3.0,
-                "status": "In Progress",
                 "start": "2024-01-02",
                 "end": "",
             },
@@ -437,26 +435,45 @@ class YBSControlTests(unittest.TestCase):
         self.app.run_date_range_report()
         insert_calls = self.app.date_tree.insert.call_args_list
         self.assertEqual(len(insert_calls), 5)
+
+        # parent row for order 1
         self.assertEqual(insert_calls[0].kwargs["text"], "1")
         self.assertFalse(insert_calls[0].kwargs["open"])
+        self.assertEqual(
+            insert_calls[0].kwargs["values"],
+            ("A", "Completed", "2.00", "", ""),
+        )
+
+        # child row for order 1
         self.assertEqual(
             insert_calls[1].kwargs["values"],
             ("", "WS1", "2.00", "2024-01-01", "2024-01-01"),
         )
+
+        # parent row for order 2 (in progress)
         self.assertEqual(insert_calls[2].kwargs["text"], "2")
         self.assertFalse(insert_calls[2].kwargs["open"])
+        self.assertEqual(
+            insert_calls[2].kwargs["values"],
+            ("B", "In Progress", "3.00", "", ""),
+        )
+        self.assertIn("inprogress", insert_calls[2].kwargs["tags"])
+
+        # child row for order 2
         self.assertEqual(
             insert_calls[3].kwargs["values"],
             ("", "WS2", "3.00", "2024-01-02", ""),
         )
-        self.assertEqual(
-            insert_calls[4].kwargs["text"],
-            "TOTAL",
-        )
+
+        # total row
+        self.assertEqual(insert_calls[4].kwargs["text"], "TOTAL")
         self.assertEqual(
             insert_calls[4].kwargs["values"],
             ("", "", "5.00", "", ""),
         )
+
+        # tag configured for in-progress orders
+        self.app.date_tree.tag_configure.assert_any_call("inprogress", background="#fff0e6")
         self.assertEqual(self.app.range_total_jobs_var.get(), "2")
         self.assertEqual(self.app.range_total_hours_var.get(), "5.00")
 

@@ -393,6 +393,7 @@ class OrderScraperApp:
         self.date_tree.tag_configure("even", background="#ffffff")
         self.date_tree.tag_configure("odd", background="#f0f0ff")
         self.date_tree.tag_configure("total", background="#e0e0e0", font=("Arial", 10, "bold"))
+        self.date_tree.tag_configure("inprogress", background="#fff0e6")
         self.date_tree.bind("<Double-1>", self.toggle_order_row)
 
         summary = ctk.CTkFrame(self.date_range_tab)
@@ -1197,14 +1198,18 @@ class OrderScraperApp:
 
     def populate_date_range_table(self, rows):
         self.date_tree.delete(*self.date_tree.get_children())
+        # Highlight orders that are still in progress
+        self.date_tree.tag_configure("inprogress", background="#fff0e6")
         total = 0.0
         for idx, r in enumerate(rows):
             tags = ["even" if idx % 2 == 0 else "odd"]
+            if r.get("status") == "In Progress":
+                tags.append("inprogress")
             parent = self.date_tree.insert(
                 "",
                 "end",
                 text=r["order"],
-                values=(r["customer"], "", f"{r['hours']:.2f}", "", ""),
+                values=(r["customer"], r.get("status", ""), f"{r['hours']:.2f}", "", ""),
                 tags=tags,
                 open=False,
             )
@@ -1255,17 +1260,21 @@ class OrderScraperApp:
                     "customer": r.get("customer", ""),
                     "hours": 0.0,
                     "workstations": [],
+                    "status": "Completed",
                 },
             )
             g["hours"] += r.get("hours") or 0.0
+            end_time = r.get("end", "")
             g["workstations"].append(
                 {
                     "workstation": r.get("workstation", ""),
                     "hours": r.get("hours") or 0.0,
                     "start": r.get("start", ""),
-                    "end": r.get("end", ""),
+                    "end": end_time,
                 }
             )
+            if not end_time:
+                g["status"] = "In Progress"
         grouped_rows = list(grouped.values())
         self.date_range_rows = grouped_rows
         self.filtered_date_range_rows = list(grouped_rows)
