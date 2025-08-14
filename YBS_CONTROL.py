@@ -42,6 +42,7 @@ logger = logging.getLogger(__name__)
 # if the endpoint changes again in the future.
 LOGIN_URL = "https://www.ybsnow.com/index.php"
 ORDERS_URL = "https://www.ybsnow.com/manage.html"
+QUEUE_URL = "https://www.ybsnow.com/queue.html"
 CONFIG_FILE = os.path.expanduser("~/.ybs_control_config.json")
 
 class OrderScraperApp:
@@ -56,6 +57,13 @@ class OrderScraperApp:
     ):
         self.root = root
         self.root.title("Order Scraper")
+        # Make the main window slightly wider so the Date Range Report tab has
+        # a bit more horizontal room (about 15% wider than the previous
+        # default).
+        try:
+            self.root.geometry("920x600")
+        except Exception:
+            pass
 
         self.session = session or requests.Session()
         self.logged_in = session is not None
@@ -87,7 +95,8 @@ class OrderScraperApp:
         self.password_var = ctk.StringVar(value=password)
         self.login_url_var = ctk.StringVar(value=login_url)
         self.orders_url_var = ctk.StringVar(value=orders_url)
-        self.refresh_interval_var = ctk.IntVar(value=5)
+        # Refresh every minute by default instead of 5 minutes
+        self.refresh_interval_var = ctk.IntVar(value=1)
         self.auto_refresh_job = None
         # export configuration
         export_path = self.config.get("export_path", os.getcwd())
@@ -119,6 +128,9 @@ class OrderScraperApp:
         self.raw_date_range_rows = []
         self.filtered_raw_date_range_rows = []
         self.date_range_filter_var = ctk.StringVar()
+        # Track orders currently listed on the print-file queue page so we can
+        # detect when they disappear.
+        self.queue_orders = set()
 
         # Tabs
         self.tab_control = ctk.CTkTabview(root)
@@ -363,11 +375,21 @@ class OrderScraperApp:
             row=0, column=6, padx=5, pady=5
         )
         ctk.CTkLabel(control_frame, text="Search:").grid(row=1, column=0, padx=5, pady=5)
-        ctk.CTkEntry(control_frame, textvariable=self.date_range_filter_var).grid(
-            row=1, column=1, padx=5, pady=5
+        self.date_range_filter_entry = ctk.CTkEntry(
+            control_frame, textvariable=self.date_range_filter_var
+        )
+        self.date_range_filter_entry.grid(row=1, column=1, padx=5, pady=5)
+        self.date_range_filter_entry.bind(
+            "<Return>", lambda e: self.filter_date_range_rows()
         )
         ctk.CTkButton(control_frame, text="Filter", command=self.filter_date_range_rows).grid(
             row=1, column=2, padx=5, pady=5
+        )
+        ctk.CTkButton(control_frame, text="Expand All", command=self.expand_all_date_rows).grid(
+            row=1, column=3, padx=5, pady=5
+        )
+        ctk.CTkButton(control_frame, text="Collapse All", command=self.collapse_all_date_rows).grid(
+            row=1, column=4, padx=5, pady=5
         )
 
         self.date_range_tab.grid_rowconfigure(2, weight=1)
@@ -501,17 +523,21 @@ class OrderScraperApp:
 
         def worker():
             try:
-                resp = self.session.get(orders_url, timeout=10)
+                resp_orders = self.session.get(orders_url, timeout=10)
+                resp_queue = self.session.get(QUEUE_URL, timeout=10)
             except requests.RequestException as e:
                 if hasattr(self, "root") and self.root:
                     self.root.after(0, lambda: messagebox.showerror("Error", f"Failed to fetch orders: {e}"))
                 else:
                     messagebox.showerror("Error", f"Failed to fetch orders: {e}")
                 return
+            # Process the queue page first so disappearing orders get logged
+            # before we refresh the main orders table.
+            self._process_queue_html(resp_queue.text)
             if hasattr(self, "root") and self.root:
-                self.root.after(0, lambda: self._process_orders_html(resp.text))
+                self.root.after(0, lambda: self._process_orders_html(resp_orders.text))
             else:
-                self._process_orders_html(resp.text)
+                self._process_orders_html(resp_orders.text)
 
         thread = threading.Thread(target=worker, daemon=True)
         thread.start()
@@ -580,14 +606,55 @@ class OrderScraperApp:
                     logger.exception("Error parsing row")
         self.refresh_database_tab()
 
+    def _process_queue_html(self, html):
+        """Parse the print-file queue page and record when jobs disappear."""
+        soup = BeautifulSoup(html, "html.parser")
+        tbody = soup.find("tbody")
+        current = set()
+        if tbody:
+            for tr in tbody.find_all("tr"):
+                td_text = tr.get_text(" ", strip=True)
+                match = re.search(r"([A-Za-z0-9_-]*\d+[A-Za-z0-9_-]*)", td_text)
+                if match:
+                    current.add(match.group(1))
+        disappeared = self.queue_orders - current
+        for order in disappeared:
+            self.record_print_file_start(order)
+        self.queue_orders = current
+
+    def record_print_file_start(self, order_number):
+        cur = self.db.cursor()
+        cur.execute(
+            "SELECT 1 FROM steps WHERE order_number=? AND step=?",
+            (order_number, "Print File"),
+        )
+        if cur.fetchone():
+            return
+        ts = datetime.now().isoformat(sep=" ")
+        cur.execute(
+            "INSERT INTO steps(order_number, step, timestamp) VALUES (?, ?, ?)",
+            (order_number, "Print File", ts),
+        )
+        self.db.commit()
+
     def log_order(self, order_number, company, steps):
         cur = self.db.cursor()
         cur.execute(
             "INSERT OR REPLACE INTO orders(order_number, company) VALUES (?, ?)",
             (order_number, company),
         )
+        cur.execute(
+            "SELECT timestamp FROM steps WHERE order_number=? AND step=?",
+            (order_number, "Print File"),
+        )
+        existing_pf = cur.fetchone()
         cur.execute("DELETE FROM steps WHERE order_number=?", (order_number,))
         cur.execute("DELETE FROM lead_times WHERE order_number=?", (order_number,))
+        if existing_pf and not any(s[0] == "Print File" for s in steps):
+            ts_pf = (
+                datetime.fromisoformat(existing_pf[0]) if existing_pf[0] else None
+            )
+            steps = [("Print File", ts_pf)] + steps
         for step, ts in steps:
             ts_str = ts.isoformat(sep=" ") if ts else None
             cur.execute(
@@ -934,7 +1001,7 @@ class OrderScraperApp:
         try:
             interval = int(self.refresh_interval_var.get())
         except (TypeError, ValueError):
-            interval = 5
+            interval = 1
             self.refresh_interval_var.set(interval)
         interval_ms = max(1, interval) * 60 * 1000
         if self.auto_refresh_job is not None:
@@ -1219,8 +1286,8 @@ class OrderScraperApp:
                     "workstation": ws,
                     "hours": hours or 0.0,
                     "status": status,
-                    "start": s.split(" ")[0] if s else "",
-                    "end": e.split(" ")[0] if e else "",
+                    "start": s[:16] if s else "",
+                    "end": e[:16] if e else "",
                 }
             )
         return rows
@@ -1280,6 +1347,21 @@ class OrderScraperApp:
             is_open = self.date_tree.item(item, "open")
             self.date_tree.item(item, open=not is_open)
 
+    def _set_all_date_rows_open(self, open_state):
+        def recurse(item):
+            self.date_tree.item(item, open=open_state)
+            for child in self.date_tree.get_children(item):
+                recurse(child)
+
+        for child in self.date_tree.get_children():
+            recurse(child)
+
+    def expand_all_date_rows(self):
+        self._set_all_date_rows_open(True)
+
+    def collapse_all_date_rows(self):
+        self._set_all_date_rows_open(False)
+
     def update_date_range_summary(self, rows):
         total_jobs = len({r["order"] for r in rows})
         total_hours = sum(r["hours"] for r in rows)
@@ -1327,9 +1409,9 @@ class OrderScraperApp:
             prev_ts = None
             for step_name, ts in steps:
                 step_lower = step_name.lower()
-                end_str = ts.strftime("%Y-%m-%d") if ts else ""
+                end_str = ts.strftime("%Y-%m-%d %H:%M") if ts else ""
                 if step_lower not in existing:
-                    start_str = prev_ts.strftime("%Y-%m-%d") if prev_ts else ""
+                    start_str = prev_ts.strftime("%Y-%m-%d %H:%M") if prev_ts else ""
                     delta = (
                         business_hours_delta(prev_ts, ts)
                         if prev_ts and ts
