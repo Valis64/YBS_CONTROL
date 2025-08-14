@@ -3,6 +3,7 @@ from unittest.mock import MagicMock, patch
 from types import SimpleNamespace
 import requests
 import os
+import sqlite3
 
 from YBS_CONTROL import OrderScraperApp
 from login_dialog import LoginDialog
@@ -105,6 +106,9 @@ class YBSControlTests(unittest.TestCase):
         self.app.clear_date_range_report = OrderScraperApp.clear_date_range_report.__get__(self.app)
         self.app.export_realtime_report = OrderScraperApp.export_realtime_report.__get__(self.app)
         self.app.toggle_order_row = OrderScraperApp.toggle_order_row.__get__(self.app)
+        self.app.load_jobs_by_date_range = OrderScraperApp.load_jobs_by_date_range.__get__(self.app)
+        self.app._process_queue_html = OrderScraperApp._process_queue_html.__get__(self.app)
+        self.app.record_print_file_start = OrderScraperApp.record_print_file_start.__get__(self.app)
 
     @patch("YBS_CONTROL.messagebox")
     def test_get_orders_request_exception(self, mock_messagebox):
@@ -113,6 +117,26 @@ class YBSControlTests(unittest.TestCase):
         self.app.session.get.assert_called_with("http://example.com/orders", timeout=10)
         mock_messagebox.showerror.assert_called_once()
         self.app.orders_tree.delete.assert_not_called()
+
+    def test_process_queue_html_records_disappearance(self):
+        # Setup in-memory database for steps
+        self.app.db = sqlite3.connect(":memory:")
+        cur = self.app.db.cursor()
+        cur.execute(
+            "CREATE TABLE steps (order_number TEXT, step TEXT, timestamp TEXT)"
+        )
+        self.app.queue_orders = {"100"}
+        html_initial = "<table><tbody><tr><td>100</td></tr></tbody></table>"
+        self.app._process_queue_html(html_initial)
+        # Order 100 disappears on next fetch
+        html_empty = "<table><tbody></tbody></table>"
+        self.app._process_queue_html(html_empty)
+        cur.execute(
+            "SELECT step, timestamp FROM steps WHERE order_number='100'"
+        )
+        row = cur.fetchone()
+        self.assertEqual(row[0], "Print File")
+        self.assertTrue(row[1])
 
     @patch("YBS_CONTROL.messagebox")
     def test_parse_company_and_order_from_same_cell(self, mock_messagebox):
@@ -528,6 +552,24 @@ class YBSControlTests(unittest.TestCase):
         self.app.date_tree.tag_configure.assert_any_call("inprogress", background="#fff0e6")
         self.assertEqual(self.app.range_total_jobs_var.get(), "2")
         self.assertEqual(self.app.range_total_hours_var.get(), "5.00")
+
+    def test_load_jobs_by_date_range_includes_time(self):
+        self.app.db = sqlite3.connect(":memory:")
+        cur = self.app.db.cursor()
+        cur.execute(
+            "CREATE TABLE lead_times (order_number TEXT, workstation TEXT, start TEXT, end TEXT, hours REAL)"
+        )
+        cur.execute(
+            "CREATE TABLE orders (order_number TEXT, company TEXT)"
+        )
+        cur.execute(
+            "INSERT INTO lead_times VALUES ('1','Print','2024-01-01 10:30:00','2024-01-01 11:45:00',1.25)"
+        )
+        rows = self.app.load_jobs_by_date_range(
+            datetime(2024, 1, 1), datetime(2024, 1, 2)
+        )
+        self.assertEqual(rows[0]["start"], "2024-01-01 10:30")
+        self.assertEqual(rows[0]["end"], "2024-01-01 11:45")
 
     def test_run_date_range_report_groups_orders_with_workstations(self):
         self.app.range_start_var = SimpleVar("2024-01-01")
