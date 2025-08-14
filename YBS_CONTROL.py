@@ -447,11 +447,14 @@ class OrderScraperApp:
                     messagebox.showerror("Error", f"Failed to fetch orders: {e}")
                 return
             # Process the queue page first so disappearing orders get logged
-            # before we refresh the main orders table.
-            self._process_queue_html(resp_queue.text)
+            # before we refresh the main orders table.  Both page processors
+            # run on the Tkinter thread via ``root.after`` to avoid touching
+            # the SQLite connection from this worker thread.
             if hasattr(self, "root") and self.root:
+                self.root.after(0, lambda: self._process_queue_html(resp_queue.text))
                 self.root.after(0, lambda: self._process_orders_html(resp_orders.text))
             else:
+                self._process_queue_html(resp_queue.text)
                 self._process_orders_html(resp_orders.text)
 
         thread = threading.Thread(target=worker, daemon=True)
@@ -537,93 +540,97 @@ class OrderScraperApp:
         self.queue_orders = current
 
     def record_print_file_start(self, order_number):
-        cur = self.db.cursor()
-        cur.execute(
-            "SELECT 1 FROM steps WHERE order_number=? AND step=?",
-            (order_number, "Print File"),
-        )
-        if cur.fetchone():
-            return
-        ts = datetime.now().isoformat(sep=" ")
-        cur.execute(
-            "INSERT INTO steps(order_number, step, timestamp) VALUES (?, ?, ?)",
-            (order_number, "Print File", ts),
-        )
-        self.db.commit()
-
-    def log_order(self, order_number, company, steps):
-        cur = self.db.cursor()
-        cur.execute(
-            "INSERT OR REPLACE INTO orders(order_number, company) VALUES (?, ?)",
-            (order_number, company),
-        )
-        cur.execute(
-            "SELECT timestamp FROM steps WHERE order_number=? AND step=?",
-            (order_number, "Print File"),
-        )
-        existing_pf = cur.fetchone()
-        cur.execute("DELETE FROM steps WHERE order_number=?", (order_number,))
-        cur.execute("DELETE FROM lead_times WHERE order_number=?", (order_number,))
-        if existing_pf and not any(s[0] == "Print File" for s in steps):
-            ts_pf = (
-                datetime.fromisoformat(existing_pf[0]) if existing_pf[0] else None
+        with self.db_lock:
+            cur = self.db.cursor()
+            cur.execute(
+                "SELECT 1 FROM steps WHERE order_number=? AND step=?",
+                (order_number, "Print File"),
             )
-            steps = [("Print File", ts_pf)] + steps
-        for step, ts in steps:
-            ts_str = ts.isoformat(sep=" ") if ts else None
+            if cur.fetchone():
+                return
+            ts = datetime.now().isoformat(sep=" ")
             cur.execute(
                 "INSERT INTO steps(order_number, step, timestamp) VALUES (?, ?, ?)",
-                (order_number, step, ts_str),
+                (order_number, "Print File", ts),
             )
-        # precompute lead times for storage
-        results = compute_lead_times({order_number: steps})
-        for item in results.get(order_number, []):
+            self.db.commit()
+
+    def log_order(self, order_number, company, steps):
+        with self.db_lock:
+            cur = self.db.cursor()
             cur.execute(
-                "INSERT INTO lead_times(order_number, workstation, start, end, hours) VALUES (?, ?, ?, ?, ?)",
-                (
-                    order_number,
-                    item["workstation"],
-                    item["start"].isoformat(sep=" "),
-                    item["end"].isoformat(sep=" "),
-                    item["hours"],
-                ),
+                "INSERT OR REPLACE INTO orders(order_number, company) VALUES (?, ?)",
+                (order_number, company),
             )
-        self.db.commit()
+            cur.execute(
+                "SELECT timestamp FROM steps WHERE order_number=? AND step=?",
+                (order_number, "Print File"),
+            )
+            existing_pf = cur.fetchone()
+            cur.execute("DELETE FROM steps WHERE order_number=?", (order_number,))
+            cur.execute("DELETE FROM lead_times WHERE order_number=?", (order_number,))
+            if existing_pf and not any(s[0] == "Print File" for s in steps):
+                ts_pf = (
+                    datetime.fromisoformat(existing_pf[0]) if existing_pf[0] else None
+                )
+                steps = [("Print File", ts_pf)] + steps
+            for step, ts in steps:
+                ts_str = ts.isoformat(sep=" ") if ts else None
+                cur.execute(
+                    "INSERT INTO steps(order_number, step, timestamp) VALUES (?, ?, ?)",
+                    (order_number, step, ts_str),
+                )
+            # precompute lead times for storage
+            results = compute_lead_times({order_number: steps})
+            for item in results.get(order_number, []):
+                cur.execute(
+                    "INSERT INTO lead_times(order_number, workstation, start, end, hours) VALUES (?, ?, ?, ?, ?)",
+                    (
+                        order_number,
+                        item["workstation"],
+                        item["start"].isoformat(sep=" "),
+                        item["end"].isoformat(sep=" "),
+                        item["hours"],
+                    ),
+                )
+            self.db.commit()
 
     def load_steps(self, order_number):
-        cur = self.db.cursor()
-        cur.execute(
-            "SELECT step, timestamp FROM steps WHERE order_number=? ORDER BY rowid",
-            (order_number,),
-        )
-        steps = []
-        for step, ts_str in cur.fetchall():
-            ts = datetime.fromisoformat(ts_str) if ts_str else None
-            steps.append((step, ts))
+        with self.db_lock:
+            cur = self.db.cursor()
+            cur.execute(
+                "SELECT step, timestamp FROM steps WHERE order_number=? ORDER BY rowid",
+                (order_number,),
+            )
+            steps = []
+            for step, ts_str in cur.fetchall():
+                ts = datetime.fromisoformat(ts_str) if ts_str else None
+                steps.append((step, ts))
         return steps
 
     def load_lead_times(self, order_number, start_date=None, end_date=None):
         """Load precomputed lead times optionally filtered by date range."""
-        cur = self.db.cursor()
-        query = "SELECT workstation, start, end, hours FROM lead_times WHERE order_number=?"
-        params = [order_number]
-        if start_date:
-            query += " AND start >= ?"
-            params.append(start_date.isoformat(sep=" "))
-        if end_date:
-            query += " AND end <= ?"
-            params.append(end_date.isoformat(sep=" "))
-        query += " ORDER BY start"
-        cur.execute(query, params)
-        rows = [
-            {
-                "workstation": r[0],
-                "start": datetime.fromisoformat(r[1]),
-                "end": datetime.fromisoformat(r[2]),
-                "hours": r[3],
-            }
-            for r in cur.fetchall()
-        ]
+        with self.db_lock:
+            cur = self.db.cursor()
+            query = "SELECT workstation, start, end, hours FROM lead_times WHERE order_number=?"
+            params = [order_number]
+            if start_date:
+                query += " AND start >= ?"
+                params.append(start_date.isoformat(sep=" "))
+            if end_date:
+                query += " AND end <= ?"
+                params.append(end_date.isoformat(sep=" "))
+            query += " ORDER BY start"
+            cur.execute(query, params)
+            rows = [
+                {
+                    "workstation": r[0],
+                    "start": datetime.fromisoformat(r[1]),
+                    "end": datetime.fromisoformat(r[2]),
+                    "hours": r[3],
+                }
+                for r in cur.fetchall()
+            ]
         return rows
 
     def open_analytics_window(self):
@@ -776,19 +783,20 @@ class OrderScraperApp:
         if not rows:
             rows = compute_lead_times({order_number: steps}, start, end).get(order_number, [])
             # store for future
-            cur = self.db.cursor()
-            for item in rows:
-                cur.execute(
-                    "INSERT INTO lead_times(order_number, workstation, start, end, hours) VALUES (?, ?, ?, ?, ?)",
-                    (
-                        order_number,
-                        item["workstation"],
-                        item["start"].isoformat(sep=" "),
-                        item["end"].isoformat(sep=" "),
-                        item["hours"],
-                    ),
-                )
-            self.db.commit()
+            with self.db_lock:
+                cur = self.db.cursor()
+                for item in rows:
+                    cur.execute(
+                        "INSERT INTO lead_times(order_number, workstation, start, end, hours) VALUES (?, ?, ?, ?, ?)",
+                        (
+                            order_number,
+                            item["workstation"],
+                            item["start"].isoformat(sep=" "),
+                            item["end"].isoformat(sep=" "),
+                            item["hours"],
+                        ),
+                    )
+                self.db.commit()
         row_map = {r["workstation"]: r for r in rows}
         self.report_tree.delete(*self.report_tree.get_children())
         total = 0.0
@@ -856,17 +864,18 @@ class OrderScraperApp:
         if not start and not end:
             messagebox.showerror("Export", "Enter a start or end date")
             return
-        cur = self.db.cursor()
-        query = "SELECT DISTINCT order_number FROM lead_times WHERE 1=1"
-        params = []
-        if start:
-            query += " AND start >= ?"
-            params.append(start.isoformat(sep=" "))
-        if end:
-            query += " AND end <= ?"
-            params.append(end.isoformat(sep=" "))
-        cur.execute(query, params)
-        orders = [r[0] for r in cur.fetchall()]
+        with self.db_lock:
+            cur = self.db.cursor()
+            query = "SELECT DISTINCT order_number FROM lead_times WHERE 1=1"
+            params = []
+            if start:
+                query += " AND start >= ?"
+                params.append(start.isoformat(sep=" "))
+            if end:
+                query += " AND end <= ?"
+                params.append(end.isoformat(sep=" "))
+            cur.execute(query, params)
+            orders = [r[0] for r in cur.fetchall()]
         results = {}
         for order in orders:
             rows = self.load_lead_times(order, start, end)
@@ -889,9 +898,10 @@ class OrderScraperApp:
     def export_realtime_report(self):
         """Export a realtime lead time report for the selected date range."""
         start, end = self.get_date_range()
-        cur = self.db.cursor()
-        cur.execute("SELECT DISTINCT order_number FROM steps")
-        orders = [r[0] for r in cur.fetchall()]
+        with self.db_lock:
+            cur = self.db.cursor()
+            cur.execute("SELECT DISTINCT order_number FROM steps")
+            orders = [r[0] for r in cur.fetchall()]
         jobs = {order: self.load_steps(order) for order in orders}
         report = generate_realtime_report(jobs, start, end)
         if not report:
@@ -1047,34 +1057,35 @@ class OrderScraperApp:
     # Date Range Report helpers
     def load_jobs_by_date_range(self, start, end):
         """Fetch jobs within start/end dates from the database."""
-        cur = self.db.cursor()
-        query = (
-            "SELECT lt.order_number, COALESCE(o.company,''), lt.workstation, lt.hours, lt.start, lt.end "
-            "FROM lead_times lt LEFT JOIN orders o ON o.order_number = lt.order_number WHERE 1=1"
-        )
-        params = []
-        if start:
-            query += " AND lt.start >= ?"
-            params.append(start.isoformat(sep=" "))
-        if end:
-            end_excl = end + timedelta(days=1)
-            query += " AND lt.start < ?"
-            params.append(end_excl.isoformat(sep=" "))
-        cur.execute(query, params)
-        rows = []
-        for order, company, ws, hours, s, e in cur.fetchall():
-            status = "Completed" if e else "In Progress"
-            rows.append(
-                {
-                    "order": order,
-                    "company": company,
-                    "workstation": ws,
-                    "hours": hours or 0.0,
-                    "status": status,
-                    "start": s[:16] if s else "",
-                    "end": e[:16] if e else "",
-                }
+        with self.db_lock:
+            cur = self.db.cursor()
+            query = (
+                "SELECT lt.order_number, COALESCE(o.company,''), lt.workstation, lt.hours, lt.start, lt.end "
+                "FROM lead_times lt LEFT JOIN orders o ON o.order_number = lt.order_number WHERE 1=1"
             )
+            params = []
+            if start:
+                query += " AND lt.start >= ?"
+                params.append(start.isoformat(sep=" "))
+            if end:
+                end_excl = end + timedelta(days=1)
+                query += " AND lt.start < ?"
+                params.append(end_excl.isoformat(sep=" "))
+            cur.execute(query, params)
+            rows = []
+            for order, company, ws, hours, s, e in cur.fetchall():
+                status = "Completed" if e else "In Progress"
+                rows.append(
+                    {
+                        "order": order,
+                        "company": company,
+                        "workstation": ws,
+                        "hours": hours or 0.0,
+                        "status": status,
+                        "start": s[:16] if s else "",
+                        "end": e[:16] if e else "",
+                    }
+                )
         return rows
 
     def populate_date_range_table(self, rows):
@@ -1386,7 +1397,11 @@ class OrderScraperApp:
         self.config["db_path"] = path
         self.last_db_dir = os.path.dirname(path) or os.getcwd()
         self.save_config()
-        self.db = sqlite3.connect(path)
+        # Allow the SQLite connection to be shared across threads.  Access to
+        # the connection is serialized with ``self.db_lock`` to avoid race
+        # conditions.
+        self.db_lock = threading.Lock()
+        self.db = sqlite3.connect(path, check_same_thread=False)
         cur = self.db.cursor()
         cur.execute(
             "CREATE TABLE IF NOT EXISTS orders (order_number TEXT PRIMARY KEY, company TEXT)"
