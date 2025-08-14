@@ -1300,11 +1300,12 @@ class OrderScraperApp:
                 if step_name not in existing:
                     start_str = prev_ts.strftime("%Y-%m-%d") if prev_ts else ""
                     end_str = ts.strftime("%Y-%m-%d") if ts else ""
-                    hours = (
+                    delta = (
                         business_hours_delta(prev_ts, ts)
                         if prev_ts and ts
-                        else 0.0
+                        else timedelta(0)
                     )
+                    hours = delta.total_seconds() / 3600
                     g["workstations"].append(
                         {
                             "workstation": step_name,
