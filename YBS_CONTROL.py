@@ -1233,7 +1233,14 @@ class OrderScraperApp:
                 "",
                 "end",
                 text=r["order"],
-                values=(r["customer"], r.get("status", ""), f"{r['hours']:.2f}", "", ""),
+                values=(
+                    r["customer"],
+                    "",
+                    "",
+                    "",
+                    f"{r['hours']:.2f}",
+                    r.get("status", ""),
+                ),
                 tags=tags,
                 open=False,
             )
@@ -1242,14 +1249,21 @@ class OrderScraperApp:
                     parent,
                     "end",
                     text="",
-                    values=("", ws["workstation"], f"{ws['hours']:.2f}", ws["start"], ws["end"]),
+                    values=(
+                        "",
+                        ws["workstation"],
+                        ws["start"],
+                        ws["end"],
+                        f"{ws['hours']:.2f}",
+                        "",
+                    ),
                 )
             total += r["hours"]
         self.date_tree.insert(
             "",
             "end",
             text="TOTAL",
-            values=("", "", f"{total:.2f}", "", ""),
+            values=("", "", "", "", f"{total:.2f}", ""),
             tags=("total",),
         )
 

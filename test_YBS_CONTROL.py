@@ -445,13 +445,13 @@ class YBSControlTests(unittest.TestCase):
         self.assertFalse(insert_calls[0].kwargs["open"])
         self.assertEqual(
             insert_calls[0].kwargs["values"],
-            ("A", "Completed", "2.00", "", ""),
+            ("A", "", "", "", "2.00", "Completed"),
         )
 
         # child row for order 1
         self.assertEqual(
             insert_calls[1].kwargs["values"],
-            ("", "WS1", "2.00", "2024-01-01", "2024-01-01"),
+            ("", "WS1", "2024-01-01", "2024-01-01", "2.00", ""),
         )
 
         # parent row for order 2 (in progress)
@@ -459,21 +459,21 @@ class YBSControlTests(unittest.TestCase):
         self.assertFalse(insert_calls[2].kwargs["open"])
         self.assertEqual(
             insert_calls[2].kwargs["values"],
-            ("B", "In Progress", "3.00", "", ""),
+            ("B", "", "", "", "3.00", "In Progress"),
         )
         self.assertIn("inprogress", insert_calls[2].kwargs["tags"])
 
         # child row for order 2
         self.assertEqual(
             insert_calls[3].kwargs["values"],
-            ("", "WS2", "3.00", "2024-01-02", ""),
+            ("", "WS2", "2024-01-02", "", "3.00", ""),
         )
 
         # total row
         self.assertEqual(insert_calls[4].kwargs["text"], "TOTAL")
         self.assertEqual(
             insert_calls[4].kwargs["values"],
-            ("", "", "5.00", "", ""),
+            ("", "", "", "", "5.00", ""),
         )
 
         # tag configured for in-progress orders
@@ -541,9 +541,12 @@ class YBSControlTests(unittest.TestCase):
         self.app.run_date_range_report()
         insert_calls = self.app.date_tree.insert.call_args_list
         values_list = [call.kwargs["values"] for call in insert_calls]
-        self.assertIn(("", "Print File", "0.00", "", "2024-01-01"), values_list)
-        self.assertIn(("", "Shipping", "0.00", "2024-01-02", ""), values_list)
-        self.assertEqual(insert_calls[0].kwargs["values"], ("A", "In Progress", "1.00", "", ""))
+        self.assertIn(("", "Print File", "", "2024-01-01", "0.00", ""), values_list)
+        self.assertIn(("", "Shipping", "2024-01-02", "", "0.00", ""), values_list)
+        self.assertEqual(
+            insert_calls[0].kwargs["values"],
+            ("A", "", "", "", "1.00", "In Progress"),
+        )
 
     def test_populate_date_range_table_inserts_parent_and_child_rows(self):
         rows = [
