@@ -540,10 +540,10 @@ class OrderScraperApp:
                         if not order_num and re.search(r"\d", part):
                             match = re.search(r"([A-Za-z0-9_-]+)$", part)
                             order_num = match.group(1) if match else re.sub(r"[^A-Za-z0-9_-]", "", part)
-                        elif not company:
+                        elif not company and re.search(r"[A-Za-z]", part):
                             company = part
 
-                    if not company and len(tds) > 1:
+                    if (not company or company == "?") and len(tds) > 1:
                         for text in tds[1].stripped_strings:
                             company = text
                             break
