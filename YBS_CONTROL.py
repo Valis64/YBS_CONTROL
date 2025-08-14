@@ -454,7 +454,10 @@ class OrderScraperApp:
                 self.root.after(0, lambda: self._process_queue_html(resp_queue.text))
                 self.root.after(0, lambda: self._process_orders_html(resp_orders.text))
             else:
-                self._process_queue_html(resp_queue.text)
+                try:
+                    self._process_queue_html(resp_queue.text)
+                except Exception:
+                    pass  # _process_queue_html logs any parsing errors
                 self._process_orders_html(resp_orders.text)
 
         thread = threading.Thread(target=worker, daemon=True)
@@ -525,19 +528,22 @@ class OrderScraperApp:
 
     def _process_queue_html(self, html):
         """Parse the print-file queue page and record when jobs disappear."""
-        soup = BeautifulSoup(html, "html.parser")
-        tbody = soup.find("tbody")
-        current = set()
-        if tbody:
-            for tr in tbody.find_all("tr"):
-                td_text = tr.get_text(" ", strip=True)
-                match = re.search(r"([A-Za-z0-9_-]*\d+[A-Za-z0-9_-]*)", td_text)
-                if match:
-                    current.add(match.group(1))
-        disappeared = self.queue_orders - current
-        for order in disappeared:
-            self.record_print_file_start(order)
-        self.queue_orders = current
+        try:
+            soup = BeautifulSoup(html, "html.parser")
+            tbody = soup.find("tbody")
+            current = set()
+            if tbody:
+                for tr in tbody.find_all("tr"):
+                    td_text = tr.get_text(" ", strip=True)
+                    match = re.search(r"([A-Za-z0-9_-]*\d+[A-Za-z0-9_-]*)", td_text)
+                    if match:
+                        current.add(match.group(1))
+            disappeared = self.queue_orders - current
+            for order in disappeared:
+                self.record_print_file_start(order)
+            self.queue_orders = current
+        except Exception:
+            logger.exception("Error processing queue HTML")
 
     def record_print_file_start(self, order_number):
         with self.db_lock:

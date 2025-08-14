@@ -123,6 +123,12 @@ class YBSControlTests(unittest.TestCase):
         self.assertEqual(row[0], "Print File")
         self.assertTrue(row[1])
 
+    def test_process_queue_html_logs_error_on_malformed_html(self):
+        with patch("YBS_CONTROL.BeautifulSoup", side_effect=ValueError("boom")):
+            with self.assertLogs("YBS_CONTROL", level="ERROR") as cm:
+                self.app._process_queue_html("<bad>")
+        self.assertTrue(any("Error processing queue HTML" in msg for msg in cm.output))
+
     @patch("YBS_CONTROL.messagebox")
     def test_parse_company_and_order_from_same_cell(self, mock_messagebox):
         html = (
