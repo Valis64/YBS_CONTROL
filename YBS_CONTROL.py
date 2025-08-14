@@ -376,7 +376,7 @@ class OrderScraperApp:
         table_frame.grid(row=2, column=0, columnspan=7, sticky="nsew", padx=10, pady=10)
 
         columns = (
-            "customer",
+            "company",
             "workstation",
             "start",
             "end",
@@ -394,7 +394,7 @@ class OrderScraperApp:
         )
         self.date_tree.column("#0", anchor="center")
         headings = [
-            "Customer",
+            "Company",
             "Workstation",
             "Start",
             "End",
@@ -1215,7 +1215,7 @@ class OrderScraperApp:
             rows.append(
                 {
                     "order": order,
-                    "customer": company,
+                    "company": company,
                     "workstation": ws,
                     "hours": hours or 0.0,
                     "status": status,
@@ -1239,7 +1239,7 @@ class OrderScraperApp:
                 "end",
                 text=r["order"],
                 values=(
-                    r["customer"],
+                    r["company"],
                     "",
                     "",
                     "",
@@ -1300,7 +1300,7 @@ class OrderScraperApp:
                 order,
                 {
                     "order": order,
-                    "customer": r.get("customer", ""),
+                    "company": r.get("company", ""),
                     "hours": 0.0,
                     "workstations": [],
                     "status": "Completed",
@@ -1349,7 +1349,7 @@ class OrderScraperApp:
                     raw_rows.append(
                         {
                             "order": order,
-                            "customer": g.get("customer", ""),
+                            "company": g.get("company", ""),
                             "workstation": step_name,
                             "hours": hours,
                             "start": start_str,
@@ -1389,7 +1389,7 @@ class OrderScraperApp:
             writer = csv.writer(f)
             writer.writerow([
                 "Order",
-                "Customer",
+                "Company",
                 "Workstation",
                 "Start",
                 "End",
@@ -1399,7 +1399,7 @@ class OrderScraperApp:
             for r in self.date_range_rows:
                 writer.writerow([
                     r["order"],
-                    r.get("customer", ""),
+                    r.get("company", ""),
                     "",
                     "",
                     "",
@@ -1428,13 +1428,13 @@ class OrderScraperApp:
                 r
                 for r in self.date_range_rows
                 if term in str(r.get("order", "")).lower()
-                or term in str(r.get("customer", "")).lower()
+                or term in str(r.get("company", "")).lower()
             ]
             raw_rows = [
                 r
                 for r in self.raw_date_range_rows
                 if term in str(r.get("order", "")).lower()
-                or term in str(r.get("customer", "")).lower()
+                or term in str(r.get("company", "")).lower()
             ]
         self.filtered_date_range_rows = rows
         self.filtered_raw_date_range_rows = raw_rows
@@ -1444,7 +1444,7 @@ class OrderScraperApp:
     def sort_date_range_table(self, column, reverse=False):
         key_funcs = {
             "order": lambda r: r["order"],
-            "customer": lambda r: r["customer"],
+            "company": lambda r: r["company"],
             "hours": lambda r: r["hours"],
         }
         if column not in key_funcs:

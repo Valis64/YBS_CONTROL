@@ -443,7 +443,7 @@ class YBSControlTests(unittest.TestCase):
         rows = [
             {
                 "order": "1",
-                "customer": "A",
+                "company": "A",
                 "workstation": "WS1",
                 "hours": 2.0,
                 "start": "2024-01-01",
@@ -451,7 +451,7 @@ class YBSControlTests(unittest.TestCase):
             },
             {
                 "order": "2",
-                "customer": "B",
+                "company": "B",
                 "workstation": "WS2",
                 "hours": 3.0,
                 "start": "2024-01-02",
@@ -511,7 +511,7 @@ class YBSControlTests(unittest.TestCase):
         rows = [
             {
                 "order": "1",
-                "customer": "A",
+                "company": "A",
                 "workstation": "WS1",
                 "hours": 1.0,
                 "start": "2024-01-01",
@@ -519,7 +519,7 @@ class YBSControlTests(unittest.TestCase):
             },
             {
                 "order": "1",
-                "customer": "A",
+                "company": "A",
                 "workstation": "WS2",
                 "hours": 2.0,
                 "start": "2024-01-01",
@@ -550,7 +550,7 @@ class YBSControlTests(unittest.TestCase):
         rows = [
             {
                 "order": "1",
-                "customer": "A",
+                "company": "A",
                 "workstation": "Cutting",
                 "hours": 1.0,
                 "start": "2024-01-01",
@@ -578,7 +578,7 @@ class YBSControlTests(unittest.TestCase):
         rows = [
             {
                 "order": "1",
-                "customer": "A",
+                "company": "A",
                 "workstation": "Shipping",
                 "hours": 1.0,
                 "start": "2024-01-02",
@@ -586,7 +586,7 @@ class YBSControlTests(unittest.TestCase):
             },
             {
                 "order": "1",
-                "customer": "A",
+                "company": "A",
                 "workstation": "Cutting",
                 "hours": 2.0,
                 "start": "2024-01-01",
@@ -609,7 +609,7 @@ class YBSControlTests(unittest.TestCase):
         rows = [
             {
                 "order": "1",
-                "customer": "Cust",
+                "company": "Cust",
                 "hours": 3.0,
                 "status": "Completed",
                 "workstations": [
@@ -659,7 +659,7 @@ class YBSControlTests(unittest.TestCase):
         rows = [
             {
                 "order": "1",
-                "customer": "Alpha",
+                "company": "Alpha",
                 "workstation": "WS1",
                 "hours": 1.0,
                 "start": "2024-01-01",
@@ -667,7 +667,7 @@ class YBSControlTests(unittest.TestCase):
             },
             {
                 "order": "2",
-                "customer": "Beta",
+                "company": "Beta",
                 "workstation": "WS2",
                 "hours": 2.0,
                 "start": "2024-01-02",
@@ -675,7 +675,7 @@ class YBSControlTests(unittest.TestCase):
             },
             {
                 "order": "3",
-                "customer": "AlphaBeta",
+                "company": "AlphaBeta",
                 "workstation": "WS3",
                 "hours": 3.0,
                 "start": "2024-01-03",
