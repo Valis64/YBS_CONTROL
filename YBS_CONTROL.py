@@ -543,6 +543,11 @@ class OrderScraperApp:
                         elif not company:
                             company = part
 
+                    if not company and len(tds) > 1:
+                        for text in tds[1].stripped_strings:
+                            company = text
+                            break
+
                     # Remaining columns contain status and priority, but the
                     # page includes spacer cells.  Use indexes 2 and 4 rather
                     # than 1 and 3 to skip those spacers when present.

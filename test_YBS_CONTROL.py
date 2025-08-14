@@ -135,6 +135,30 @@ class YBSControlTests(unittest.TestCase):
         args, kwargs = self.app.orders_tree.insert.call_args
         self.assertEqual(kwargs["values"], ("12345", "ACME Corp", "Running", "High"))
 
+    @patch("YBS_CONTROL.messagebox")
+    def test_parse_company_and_order_from_separate_cells(self, mock_messagebox):
+        html = (
+            "<table><tbody id='table'>"
+            "<tr>"
+            "<td>YBS 35264<ul class='workplaces'></ul></td>"
+            "<td class='details cboxElement'><p>Velocity Production and Packaging</p><p>Hydration Heroes Mini Kit</p></td>"
+            "<td></td>"
+            "<td></td>"
+            "<td><input value=''/></td>"
+            "</tr>"
+            "</tbody></table>"
+        )
+        mock_response = MagicMock()
+        mock_response.text = html
+        self.app.session.get.return_value = mock_response
+        self.app.get_orders()
+        self.app.orders_tree.insert.assert_called_once()
+        args, kwargs = self.app.orders_tree.insert.call_args
+        self.assertEqual(
+            kwargs["values"],
+            ("35264", "Velocity Production and Packaging", "", ""),
+        )
+
     def test_show_report_displays_all_workstations(self):
         self.app.start_date_var = SimpleVar("")
         self.app.end_date_var = SimpleVar("")
