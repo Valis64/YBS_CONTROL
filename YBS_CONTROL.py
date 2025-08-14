@@ -54,7 +54,7 @@ class OrderScraperApp:
         # a bit more horizontal room (about 15% wider than the previous
         # default).
         try:
-            self.root.geometry("920x600")
+            self.root.geometry("1200x700")
         except Exception:
             pass
 
@@ -91,6 +91,9 @@ class OrderScraperApp:
         # Refresh every minute by default instead of 5 minutes
         self.refresh_interval_var = ctk.IntVar(value=1)
         self.auto_refresh_job = None
+        self.refresh_timer_job = None
+        self.next_refresh_time = None
+        self.refresh_timer_var = ctk.StringVar(value="")
         # export configuration
         export_path = self.config.get("export_path", os.getcwd())
         self.export_path_var = ctk.StringVar(value=export_path)
@@ -120,6 +123,9 @@ class OrderScraperApp:
         # settings tab on far right
         self.settings_tab = self.tab_control.add("Settings")
         self.tab_control.pack(expand=1, fill="both")
+
+        self.refresh_timer_label = ctk.CTkLabel(root, textvariable=self.refresh_timer_var)
+        self.refresh_timer_label.place(relx=1.0, rely=1.0, anchor="se", padx=10, pady=5)
 
         # Settings Tab
         ctk.CTkLabel(self.settings_tab, text="Refresh interval (min):").grid(row=0, column=0, padx=5, pady=5)
@@ -905,6 +911,13 @@ class OrderScraperApp:
 
     def schedule_auto_refresh(self):
         if not self.logged_in:
+            self.next_refresh_time = None
+            self.refresh_timer_var.set("")
+            if self.refresh_timer_job is not None:
+                try:
+                    self.root.after_cancel(self.refresh_timer_job)
+                except Exception:
+                    pass
             return
         try:
             interval = int(self.refresh_interval_var.get())
@@ -912,17 +925,38 @@ class OrderScraperApp:
             interval = 1
             self.refresh_interval_var.set(interval)
         interval_ms = max(1, interval) * 60 * 1000
+        self.next_refresh_time = datetime.now() + timedelta(milliseconds=interval_ms)
         if self.auto_refresh_job is not None:
             try:
                 self.root.after_cancel(self.auto_refresh_job)
             except Exception:
                 pass
+        if self.refresh_timer_job is not None:
+            try:
+                self.root.after_cancel(self.refresh_timer_job)
+            except Exception:
+                pass
+        self.update_refresh_timer()
         self.auto_refresh_job = self.root.after(interval_ms, self.auto_refresh)
 
     def auto_refresh(self):
         if self.logged_in:
+            self.refresh_timer_var.set("Refreshing...")
             self.get_orders()
         self.schedule_auto_refresh()
+
+    def update_refresh_timer(self):
+        if self.next_refresh_time is None:
+            return
+        remaining = self.next_refresh_time - datetime.now()
+        if remaining.total_seconds() <= 0:
+            self.refresh_timer_var.set("Refreshing...")
+        else:
+            minutes, seconds = divmod(int(remaining.total_seconds()), 60)
+            self.refresh_timer_var.set(
+                f"Next refresh in {minutes:02d}:{seconds:02d}"
+            )
+            self.refresh_timer_job = self.root.after(1000, self.update_refresh_timer)
 
     def schedule_daily_export(self):
         """Schedule the daily export based on configured time."""
