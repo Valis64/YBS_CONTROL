@@ -387,8 +387,12 @@ class OrderScraperApp:
             table_frame, columns=columns, show="tree headings"
         )
         self.date_tree.heading(
-            "#0", text="Order", command=lambda: self.sort_date_range_table("order")
+            "#0",
+            text="Order",
+            anchor="center",
+            command=lambda: self.sort_date_range_table("order"),
         )
+        self.date_tree.column("#0", anchor="center")
         headings = [
             "Customer",
             "Workstation",
@@ -398,8 +402,13 @@ class OrderScraperApp:
             "Status",
         ]
         for col, head in zip(columns, headings):
-            self.date_tree.heading(col, text=head, command=lambda c=col: self.sort_date_range_table(c))
-            self.date_tree.column(col, anchor="w")
+            self.date_tree.heading(
+                col,
+                text=head,
+                anchor="center",
+                command=lambda c=col: self.sort_date_range_table(c),
+            )
+            self.date_tree.column(col, anchor="center")
         self.date_tree.pack(side="left", expand=1, fill="both")
         scroll = ttk.Scrollbar(table_frame, orient="vertical", command=self.date_tree.yview)
         self.date_tree.configure(yscrollcommand=scroll.set)
@@ -1328,9 +1337,14 @@ class OrderScraperApp:
                         }
                     )
                     existing.add(step_name)
-                    if not end_str:
-                        g["status"] = "In Progress"
+                if not end_str:
+                    g["status"] = "In Progress"
                 prev_ts = ts
+
+            # Ensure "Print File" workstation appears first
+            g["workstations"].sort(
+                key=lambda ws: 0 if ws.get("workstation", "").lower() == "print file" else 1
+            )
 
         grouped_rows = list(grouped.values())
         self.raw_date_range_rows = raw_rows
