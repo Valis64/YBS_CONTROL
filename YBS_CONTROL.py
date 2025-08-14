@@ -9,6 +9,7 @@ import sqlite3
 import re
 from datetime import datetime, timedelta
 import json
+import csv
 import logging
 from tkcalendar import DateEntry
 
@@ -341,7 +342,7 @@ class OrderScraperApp:
 
         # Date Range Report tab view
         control_frame = ctk.CTkFrame(self.date_range_tab)
-        control_frame.grid(row=0, column=0, columnspan=6, sticky="ew", padx=10, pady=5)
+        control_frame.grid(row=0, column=0, columnspan=7, sticky="ew", padx=10, pady=5)
         ctk.CTkLabel(control_frame, text="Start Date:").grid(row=0, column=0, padx=5, pady=5)
         DateEntry(control_frame, textvariable=self.range_start_var, width=12, date_pattern="yyyy-mm-dd").grid(
             row=0, column=1, padx=5, pady=5
@@ -356,18 +357,22 @@ class OrderScraperApp:
         ctk.CTkButton(control_frame, text="Clear", command=self.clear_date_range_report).grid(
             row=0, column=5, padx=5, pady=5
         )
+        ctk.CTkButton(control_frame, text="Export CSV", command=self.export_date_range_csv).grid(
+            row=0, column=6, padx=5, pady=5
+        )
 
         self.date_range_tab.grid_rowconfigure(2, weight=1)
         self.date_range_tab.grid_columnconfigure(0, weight=1)
         table_frame = ctk.CTkFrame(self.date_range_tab)
-        table_frame.grid(row=2, column=0, columnspan=6, sticky="nsew", padx=10, pady=10)
+        table_frame.grid(row=2, column=0, columnspan=7, sticky="nsew", padx=10, pady=10)
 
         columns = (
             "customer",
             "workstation",
-            "hours",
             "start",
             "end",
+            "hours",
+            "status",
         )
         self.date_tree = ttk.Treeview(
             table_frame, columns=columns, show="tree headings"
@@ -378,9 +383,10 @@ class OrderScraperApp:
         headings = [
             "Customer",
             "Workstation",
-            "Hours",
             "Start",
             "End",
+            "Hours",
+            "Status",
         ]
         for col, head in zip(columns, headings):
             self.date_tree.heading(col, text=head, command=lambda c=col: self.sort_date_range_table(c))
@@ -397,7 +403,7 @@ class OrderScraperApp:
         self.date_tree.bind("<Double-1>", self.toggle_order_row)
 
         summary = ctk.CTkFrame(self.date_range_tab)
-        summary.grid(row=3, column=0, columnspan=6, sticky="ew", padx=10, pady=5)
+        summary.grid(row=3, column=0, columnspan=7, sticky="ew", padx=10, pady=5)
         ctk.CTkLabel(summary, text="Total Jobs:").grid(row=0, column=0, padx=5, pady=5)
         ctk.CTkLabel(summary, textvariable=self.range_total_jobs_var).grid(row=0, column=1, padx=5, pady=5)
         ctk.CTkLabel(summary, text="Total Hours:").grid(row=0, column=2, padx=5, pady=5)
@@ -1209,7 +1215,7 @@ class OrderScraperApp:
                 "",
                 "end",
                 text=r["order"],
-                values=(r["customer"], r.get("status", ""), f"{r['hours']:.2f}", "", ""),
+                values=(r["customer"], "", "", "", f"{r['hours']:.2f}", r.get("status", "")),
                 tags=tags,
                 open=False,
             )
@@ -1218,14 +1224,14 @@ class OrderScraperApp:
                     parent,
                     "end",
                     text="",
-                    values=("", ws["workstation"], f"{ws['hours']:.2f}", ws["start"], ws["end"]),
+                    values=("", ws["workstation"], ws["start"], ws["end"], f"{ws['hours']:.2f}", ""),
                 )
             total += r["hours"]
         self.date_tree.insert(
             "",
             "end",
             text="TOTAL",
-            values=("", "", f"{total:.2f}", "", ""),
+            values=("", "", "", "", f"{total:.2f}", ""),
             tags=("total",),
         )
 
@@ -1280,6 +1286,50 @@ class OrderScraperApp:
         self.filtered_date_range_rows = list(grouped_rows)
         self.populate_date_range_table(grouped_rows)
         self.update_date_range_summary(self.raw_date_range_rows)
+
+    def export_date_range_csv(self):
+        """Export the date range report to a CSV file."""
+        if not self.date_range_rows:
+            messagebox.showerror("Date Range Report", "Run report before exporting")
+            return
+        start, end = self.get_date_range(self.range_start_var, self.range_end_var)
+        s = start.strftime("%Y%m%d") if start else "begin"
+        e = end.strftime("%Y%m%d") if end else "now"
+        export_dir = self.export_path_var.get().strip() or os.getcwd()
+        os.makedirs(export_dir, exist_ok=True)
+        path = os.path.join(export_dir, f"date_range_{s}_{e}.csv")
+        with open(path, "w", newline="") as f:
+            writer = csv.writer(f)
+            writer.writerow([
+                "Order",
+                "Customer",
+                "Workstation",
+                "Start",
+                "End",
+                "Hours",
+                "Status",
+            ])
+            for r in self.date_range_rows:
+                writer.writerow([
+                    r["order"],
+                    r.get("customer", ""),
+                    "",
+                    "",
+                    "",
+                    f"{r['hours']:.2f}",
+                    r.get("status", ""),
+                ])
+                for ws in r.get("workstations", []):
+                    writer.writerow([
+                        "",
+                        "",
+                        ws.get("workstation", ""),
+                        ws.get("start", ""),
+                        ws.get("end", ""),
+                        f"{ws['hours']:.2f}",
+                        "",
+                    ])
+        messagebox.showinfo("Date Range Report", f"Report written to {path}")
 
     def sort_date_range_table(self, column, reverse=False):
         key_funcs = {
