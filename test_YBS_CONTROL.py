@@ -435,6 +435,7 @@ class YBSControlTests(unittest.TestCase):
             },
         ]
         self.app.load_jobs_by_date_range = MagicMock(return_value=rows)
+        self.app.load_steps = MagicMock(return_value=[])
         self.app.run_date_range_report()
         insert_calls = self.app.date_tree.insert.call_args_list
         self.assertEqual(len(insert_calls), 5)
@@ -502,6 +503,7 @@ class YBSControlTests(unittest.TestCase):
             },
         ]
         self.app.load_jobs_by_date_range = MagicMock(return_value=rows)
+        self.app.load_steps = MagicMock(return_value=[])
         self.app.populate_date_range_table = MagicMock()
         self.app.update_date_range_summary = MagicMock()
         self.app.run_date_range_report()
@@ -516,6 +518,32 @@ class YBSControlTests(unittest.TestCase):
             [ws["workstation"] for ws in grouped["workstations"]],
             ["WS1", "WS2"],
         )
+
+    @patch("YBS_CONTROL.messagebox")
+    def test_run_date_range_report_adds_missing_steps_and_sets_in_progress(self, mock_messagebox):
+        self.app.range_start_var = SimpleVar("2024-01-01")
+        self.app.range_end_var = SimpleVar("2024-01-03")
+        rows = [
+            {
+                "order": "1",
+                "customer": "A",
+                "workstation": "Cutting",
+                "hours": 1.0,
+                "start": "2024-01-01",
+                "end": "2024-01-02",
+            }
+        ]
+        self.app.load_jobs_by_date_range = MagicMock(return_value=rows)
+        t1 = datetime(2024, 1, 1)
+        t2 = datetime(2024, 1, 2)
+        steps = [("Print File", t1), ("Cutting", t2), ("Shipping", None)]
+        self.app.load_steps = MagicMock(return_value=steps)
+        self.app.run_date_range_report()
+        insert_calls = self.app.date_tree.insert.call_args_list
+        values_list = [call.kwargs["values"] for call in insert_calls]
+        self.assertIn(("", "Print File", "0.00", "", "2024-01-01"), values_list)
+        self.assertIn(("", "Shipping", "0.00", "2024-01-02", ""), values_list)
+        self.assertEqual(insert_calls[0].kwargs["values"], ("A", "In Progress", "1.00", "", ""))
 
     def test_populate_date_range_table_inserts_parent_and_child_rows(self):
         rows = [
@@ -595,6 +623,7 @@ class YBSControlTests(unittest.TestCase):
             },
         ]
         self.app.load_jobs_by_date_range = MagicMock(return_value=rows)
+        self.app.load_steps = MagicMock(return_value=[])
         self.app.run_date_range_report()
         self.app.date_tree.insert.reset_mock()
         self.app.date_range_filter_var.set("beta")
