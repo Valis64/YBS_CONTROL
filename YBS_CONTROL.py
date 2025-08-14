@@ -1271,7 +1271,7 @@ class OrderScraperApp:
         item = self.date_tree.identify_row(event.y)
         if not item:
             return
-        if self.date_tree.parent(item) == "" and self.date_tree.get_children(item):
+        if self.date_tree.get_children(item):
             is_open = self.date_tree.item(item, "open")
             self.date_tree.item(item, open=not is_open)
 
@@ -1314,15 +1314,17 @@ class OrderScraperApp:
             if not end_time:
                 g["status"] = "In Progress"
 
-        # Include missing steps for each order
+        # Include missing steps for each order and ensure workstation order
         for order, g in grouped.items():
             steps = self.load_steps(order)
-            existing = {ws["workstation"] for ws in g["workstations"]}
+            step_order = {name.lower(): idx for idx, (name, _) in enumerate(steps)}
+            existing = {ws["workstation"].lower() for ws in g["workstations"]}
             prev_ts = None
             for step_name, ts in steps:
-                if step_name not in existing:
+                step_lower = step_name.lower()
+                end_str = ts.strftime("%Y-%m-%d") if ts else ""
+                if step_lower not in existing:
                     start_str = prev_ts.strftime("%Y-%m-%d") if prev_ts else ""
-                    end_str = ts.strftime("%Y-%m-%d") if ts else ""
                     delta = (
                         business_hours_delta(prev_ts, ts)
                         if prev_ts and ts
@@ -1350,14 +1352,13 @@ class OrderScraperApp:
                             "status": status,
                         }
                     )
-                    existing.add(step_name)
+                    existing.add(step_lower)
                 if not end_str:
                     g["status"] = "In Progress"
                 prev_ts = ts
 
-            # Ensure "Print File" workstation appears first
             g["workstations"].sort(
-                key=lambda ws: 0 if ws.get("workstation", "").lower() == "print file" else 1
+                key=lambda ws: step_order.get(ws["workstation"].lower(), len(step_order))
             )
 
         grouped_rows = list(grouped.values())

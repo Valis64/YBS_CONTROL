@@ -548,6 +548,39 @@ class YBSControlTests(unittest.TestCase):
             ("A", "", "", "", "1.00", "In Progress"),
         )
 
+    def test_run_date_range_report_orders_workstations_like_steps(self):
+        self.app.range_start_var = SimpleVar("2024-01-01")
+        self.app.range_end_var = SimpleVar("2024-01-03")
+        rows = [
+            {
+                "order": "1",
+                "customer": "A",
+                "workstation": "Shipping",
+                "hours": 1.0,
+                "start": "2024-01-02",
+                "end": "2024-01-02",
+            },
+            {
+                "order": "1",
+                "customer": "A",
+                "workstation": "Cutting",
+                "hours": 2.0,
+                "start": "2024-01-01",
+                "end": "2024-01-01",
+            },
+        ]
+        self.app.load_jobs_by_date_range = MagicMock(return_value=rows)
+        t1 = datetime(2024, 1, 1)
+        t2 = datetime(2024, 1, 2)
+        steps = [("Print Files YBS", t1), ("Cutting", t2), ("Shipping", None)]
+        self.app.load_steps = MagicMock(return_value=steps)
+        self.app.populate_date_range_table = MagicMock()
+        self.app.update_date_range_summary = MagicMock()
+        self.app.run_date_range_report()
+        grouped_rows = self.app.populate_date_range_table.call_args[0][0]
+        ws_names = [ws["workstation"] for ws in grouped_rows[0]["workstations"]]
+        self.assertEqual(ws_names, ["Print Files YBS", "Cutting", "Shipping"])
+
     def test_populate_date_range_table_inserts_parent_and_child_rows(self):
         rows = [
             {
@@ -646,7 +679,6 @@ class YBSControlTests(unittest.TestCase):
         self.app.date_tree = tree
         event = SimpleNamespace(y=10)
         tree.identify_row.return_value = "order1"
-        tree.parent.return_value = ""
         tree.get_children.return_value = ["child1"]
         state = {"open": True}
 
@@ -661,6 +693,8 @@ class YBSControlTests(unittest.TestCase):
         self.assertFalse(state["open"])
         self.app.toggle_order_row(event)
         self.assertTrue(state["open"])
+        tree.identify_row.assert_called_with(10)
+        tree.get_children.assert_called_with("order1")
 
 if __name__ == "__main__":
     unittest.main()
