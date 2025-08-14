@@ -480,6 +480,90 @@ class YBSControlTests(unittest.TestCase):
         self.assertEqual(self.app.range_total_jobs_var.get(), "2")
         self.assertEqual(self.app.range_total_hours_var.get(), "5.00")
 
+    def test_run_date_range_report_groups_orders_with_workstations(self):
+        self.app.range_start_var = SimpleVar("2024-01-01")
+        self.app.range_end_var = SimpleVar("2024-01-02")
+        rows = [
+            {
+                "order": "1",
+                "customer": "A",
+                "workstation": "WS1",
+                "hours": 1.0,
+                "start": "2024-01-01",
+                "end": "2024-01-01",
+            },
+            {
+                "order": "1",
+                "customer": "A",
+                "workstation": "WS2",
+                "hours": 2.0,
+                "start": "2024-01-01",
+                "end": "2024-01-02",
+            },
+        ]
+        self.app.load_jobs_by_date_range = MagicMock(return_value=rows)
+        self.app.populate_date_range_table = MagicMock()
+        self.app.update_date_range_summary = MagicMock()
+        self.app.run_date_range_report()
+        self.app.populate_date_range_table.assert_called_once()
+        grouped_rows = self.app.populate_date_range_table.call_args[0][0]
+        self.assertEqual(len(grouped_rows), 1)
+        grouped = grouped_rows[0]
+        self.assertEqual(grouped["order"], "1")
+        self.assertEqual(grouped["hours"], 3.0)
+        self.assertEqual(len(grouped["workstations"]), 2)
+        self.assertEqual(
+            [ws["workstation"] for ws in grouped["workstations"]],
+            ["WS1", "WS2"],
+        )
+
+    def test_populate_date_range_table_inserts_parent_and_child_rows(self):
+        rows = [
+            {
+                "order": "1",
+                "customer": "Cust",
+                "hours": 3.0,
+                "status": "Completed",
+                "workstations": [
+                    {
+                        "workstation": "WS1",
+                        "start": "2024-01-01",
+                        "end": "2024-01-01",
+                        "hours": 1.0,
+                    },
+                    {
+                        "workstation": "WS2",
+                        "start": "2024-01-02",
+                        "end": "2024-01-02",
+                        "hours": 2.0,
+                    },
+                ],
+            }
+        ]
+        self.app.date_tree.insert = MagicMock(
+            side_effect=["p1", "c1", "c2", "t"]
+        )
+        self.app.populate_date_range_table(rows)
+        calls = self.app.date_tree.insert.call_args_list
+        self.assertEqual(calls[0].args[0], "")
+        self.assertEqual(calls[0].kwargs["text"], "1")
+        self.assertEqual(
+            calls[0].kwargs["values"],
+            ("Cust", "", "", "", "3.00", "Completed"),
+        )
+        self.assertEqual(calls[1].args[0], "p1")
+        self.assertEqual(
+            calls[1].kwargs["values"],
+            ("", "WS1", "2024-01-01", "2024-01-01", "1.00", ""),
+        )
+        self.assertEqual(calls[2].args[0], "p1")
+        self.assertEqual(
+            calls[2].kwargs["values"],
+            ("", "WS2", "2024-01-02", "2024-01-02", "2.00", ""),
+        )
+        self.assertEqual(calls[3].args[0], "")
+        self.assertEqual(calls[3].kwargs["text"], "TOTAL")
+
     @patch("YBS_CONTROL.messagebox")
     def test_filter_date_range_rows_and_sorting(self, mock_messagebox):
         self.app.range_start_var = SimpleVar("2024-01-01")
@@ -525,7 +609,7 @@ class YBSControlTests(unittest.TestCase):
         self.assertEqual(insert_calls[0].kwargs["text"], "3")
         self.assertEqual([r["order"] for r in self.app.filtered_date_range_rows], ["3", "2"])
 
-    def test_toggle_order_row(self):
+    def test_toggle_order_row_double_click(self):
         tree = MagicMock()
         self.app.date_tree = tree
         event = SimpleNamespace(y=10)
