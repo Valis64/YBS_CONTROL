@@ -95,10 +95,13 @@ class YBSControlTests(unittest.TestCase):
         self.app.range_total_hours_var = SimpleVar("")
         self.app.date_tree = MagicMock()
         self.app.date_tree.get_children.return_value = []
+        self.app.date_range_filter_var = SimpleVar("")
+        self.app.filtered_raw_date_range_rows = []
         self.app.run_date_range_report = OrderScraperApp.run_date_range_report.__get__(self.app)
         self.app.populate_date_range_table = OrderScraperApp.populate_date_range_table.__get__(self.app)
         self.app.update_date_range_summary = OrderScraperApp.update_date_range_summary.__get__(self.app)
         self.app.sort_date_range_table = OrderScraperApp.sort_date_range_table.__get__(self.app)
+        self.app.filter_date_range_rows = OrderScraperApp.filter_date_range_rows.__get__(self.app)
         self.app.clear_date_range_report = OrderScraperApp.clear_date_range_report.__get__(self.app)
         self.app.export_realtime_report = OrderScraperApp.export_realtime_report.__get__(self.app)
         self.app.toggle_order_row = OrderScraperApp.toggle_order_row.__get__(self.app)
@@ -476,6 +479,51 @@ class YBSControlTests(unittest.TestCase):
         self.app.date_tree.tag_configure.assert_any_call("inprogress", background="#fff0e6")
         self.assertEqual(self.app.range_total_jobs_var.get(), "2")
         self.assertEqual(self.app.range_total_hours_var.get(), "5.00")
+
+    @patch("YBS_CONTROL.messagebox")
+    def test_filter_date_range_rows_and_sorting(self, mock_messagebox):
+        self.app.range_start_var = SimpleVar("2024-01-01")
+        self.app.range_end_var = SimpleVar("2024-01-03")
+        rows = [
+            {
+                "order": "1",
+                "customer": "Alpha",
+                "workstation": "WS1",
+                "hours": 1.0,
+                "start": "2024-01-01",
+                "end": "2024-01-01",
+            },
+            {
+                "order": "2",
+                "customer": "Beta",
+                "workstation": "WS2",
+                "hours": 2.0,
+                "start": "2024-01-02",
+                "end": "2024-01-02",
+            },
+            {
+                "order": "3",
+                "customer": "AlphaBeta",
+                "workstation": "WS3",
+                "hours": 3.0,
+                "start": "2024-01-03",
+                "end": "2024-01-03",
+            },
+        ]
+        self.app.load_jobs_by_date_range = MagicMock(return_value=rows)
+        self.app.run_date_range_report()
+        self.app.date_tree.insert.reset_mock()
+        self.app.date_range_filter_var.set("beta")
+        self.app.filter_date_range_rows()
+        insert_calls = self.app.date_tree.insert.call_args_list
+        self.assertEqual(len(insert_calls), 5)
+        self.assertEqual(insert_calls[0].kwargs["text"], "2")
+        self.assertEqual([r["order"] for r in self.app.filtered_date_range_rows], ["2", "3"])
+        self.app.date_tree.insert.reset_mock()
+        self.app.sort_date_range_table("order", reverse=True)
+        insert_calls = self.app.date_tree.insert.call_args_list
+        self.assertEqual(insert_calls[0].kwargs["text"], "3")
+        self.assertEqual([r["order"] for r in self.app.filtered_date_range_rows], ["3", "2"])
 
     def test_toggle_order_row(self):
         tree = MagicMock()
