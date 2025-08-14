@@ -61,18 +61,7 @@ class YBSControlTests(unittest.TestCase):
         self.app.logged_in = True
         self.app.orders_tree = MagicMock()
         self.app.orders_tree.get_children.return_value = []
-        self.app.prod_summary_tree = MagicMock()
-        self.app.prod_summary_tree.get_children.return_value = []
-        self.app.prod_detail_tree = MagicMock()
-        self.app.prod_detail_tree.get_children.return_value = []
-        self.app.prod_filter_var = SimpleVar("")
-        self.app.prod_summary_headers = []
-        self.app.prod_summary_rows = []
-        self.app.prod_detail_headers = []
-        self.app.prod_detail_rows = []
-        self.app.filtered_prod_detail_rows = []
         self.app.log_order = MagicMock()
-        self.app.refresh_database_tab = MagicMock()
         self.app.order_rows = []
         self.app.config = {}
         self.app.save_config = MagicMock()
@@ -82,13 +71,6 @@ class YBSControlTests(unittest.TestCase):
         self.app.export_job = None
         # bind methods added after object creation
         self.app._run_scheduled_export = OrderScraperApp._run_scheduled_export.__get__(self.app)
-        self.app.run_production_report = OrderScraperApp.run_production_report.__get__(self.app)
-        self.app.export_production_report = OrderScraperApp.export_production_report.__get__(self.app)
-        self.app.populate_prod_summary_tree = OrderScraperApp.populate_prod_summary_tree.__get__(self.app)
-        self.app.populate_prod_detail_tree = OrderScraperApp.populate_prod_detail_tree.__get__(self.app)
-        self.app.filter_production_detail_rows = OrderScraperApp.filter_production_detail_rows.__get__(self.app)
-        self.app.sort_prod_summary = OrderScraperApp.sort_prod_summary.__get__(self.app)
-        self.app.sort_prod_detail = OrderScraperApp.sort_prod_detail.__get__(self.app)
         # date range report setup
         self.app.range_start_var = SimpleVar("")
         self.app.range_end_var = SimpleVar("")
@@ -288,7 +270,6 @@ class YBSControlTests(unittest.TestCase):
         self.app.analytics_canvas.draw.assert_called_once()
 
     @patch("YBS_CONTROL.threading.Thread")
-    @patch("YBS_CONTROL.OrderScraperApp.refresh_database_tab")
     @patch("YBS_CONTROL.OrderScraperApp.connect_db")
     @patch("YBS_CONTROL.OrderScraperApp.load_config", return_value={"business_start": "09:00", "business_end": "17:00", "db_path": "orders.db"})
     @patch("YBS_CONTROL.ttk.Style")
@@ -319,7 +300,6 @@ class YBSControlTests(unittest.TestCase):
         mock_style,
         mock_load_config,
         mock_connect_db,
-        mock_refresh_db,
         mock_thread,
     ):
         mock_thread.return_value = MagicMock(start=MagicMock())
@@ -423,66 +403,6 @@ class YBSControlTests(unittest.TestCase):
         mock_messagebox.showinfo.assert_called()
 
 
-    @patch("YBS_CONTROL._build_detail_table", return_value=(["A"], [[1]]))
-    @patch("YBS_CONTROL._build_summary_table", return_value=(["A"], [[1]]))
-    @patch("YBS_CONTROL.generate_production_report", return_value={})
-    @patch("YBS_CONTROL.messagebox")
-    def test_run_production_report_populates_trees(self, mock_messagebox, mock_gen, mock_summary, mock_detail):
-        self.app.prod_start_var = SimpleVar("2024-01-01")
-        self.app.prod_end_var = SimpleVar("2024-01-02")
-        self.app.load_production_events = MagicMock(return_value=[{"dummy": 1}])
-        self.app.run_production_report()
-        mock_gen.assert_called_once()
-        self.app.prod_summary_tree.insert.assert_called_once()
-        self.app.prod_detail_tree.insert.assert_called_once()
-
-    @patch("YBS_CONTROL.export_to_csv")
-    @patch("YBS_CONTROL.messagebox")
-    def test_export_production_report(self, mock_messagebox, mock_export):
-        self.app.dest_type_var = SimpleVar("CSV")
-        self.app.dest_value_var = SimpleVar("/tmp")
-        report = {"summary": []}
-        self.app.production_report_data = report
-        self.app.export_production_report()
-        mock_export.assert_called_once_with(report, "/tmp")
-        mock_messagebox.showinfo.assert_called_once()
-
-    @patch("YBS_CONTROL.messagebox")
-    def test_run_production_report_validates_dates(self, mock_messagebox):
-        self.app.prod_start_var = SimpleVar("2024-01-02")
-        self.app.prod_end_var = SimpleVar("2024-01-01")
-        self.app.dest_type_var = SimpleVar("CSV")
-        self.app.dest_value_var = SimpleVar("/tmp")
-        self.app.run_production_report()
-        mock_messagebox.showerror.assert_called_once()
-
-    @patch("YBS_CONTROL._build_detail_table", return_value=(["Order ID", "WS"], [["1", "Cut"], ["2", "Weld"]]))
-    @patch("YBS_CONTROL._build_summary_table", return_value=(["Order ID"], [["1"], ["2"]]))
-    @patch("YBS_CONTROL.generate_production_report", return_value={})
-    @patch("YBS_CONTROL.messagebox")
-    def test_filter_production_detail_rows(self, mock_messagebox, mock_gen, mock_summary, mock_detail):
-        self.app.prod_start_var = SimpleVar("2024-01-01")
-        self.app.prod_end_var = SimpleVar("2024-01-02")
-        self.app.load_production_events = MagicMock(return_value=[{"dummy": 1}])
-        self.app.run_production_report()
-        self.app.prod_detail_tree.insert.reset_mock()
-        self.app.prod_filter_var.set("Cut")
-        self.app.filter_production_detail_rows()
-        self.assertEqual(self.app.prod_detail_tree.insert.call_count, 1)
-
-    @patch("YBS_CONTROL._build_detail_table", return_value=(["Order ID"], []))
-    @patch("YBS_CONTROL._build_summary_table", return_value=(["Order ID"], [["2"], ["1"]]))
-    @patch("YBS_CONTROL.generate_production_report", return_value={})
-    @patch("YBS_CONTROL.messagebox")
-    def test_sort_prod_summary(self, mock_messagebox, mock_gen, mock_summary, mock_detail):
-        self.app.prod_start_var = SimpleVar("2024-01-01")
-        self.app.prod_end_var = SimpleVar("2024-01-02")
-        self.app.load_production_events = MagicMock(return_value=[{"dummy": 1}])
-        self.app.run_production_report()
-        self.app.prod_summary_tree.insert.reset_mock()
-        self.app.sort_prod_summary("Order ID")
-        first = self.app.prod_summary_tree.insert.call_args_list[0][1]["values"]
-        self.assertEqual(first[0], "1")
 
     @patch("YBS_CONTROL.messagebox")
     def test_run_date_range_report_populates_table_and_summary(self, mock_messagebox):
