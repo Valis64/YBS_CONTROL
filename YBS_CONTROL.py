@@ -23,13 +23,6 @@ from manage_html_report import (
 )
 import time_utils
 from time_utils import business_hours_delta, business_hours_breakdown
-from production_report import (
-    generate_production_report,
-    export_to_csv,
-    export_to_sheets,
-    _build_summary_table,
-    _build_detail_table,
-)
 
 logging.basicConfig(
     level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s"
@@ -105,19 +98,6 @@ class OrderScraperApp:
         self.export_job = None
         self.last_export_dir = export_path
 
-        # production report configuration
-        self.prod_start_var = ctk.StringVar()
-        self.prod_end_var = ctk.StringVar()
-        self.dest_type_var = ctk.StringVar(value="CSV")
-        self.dest_value_var = ctk.StringVar()
-        self.dest_label_var = ctk.StringVar(value="Output Directory:")
-        self.prod_filter_var = ctk.StringVar()
-        self.prod_summary_headers = []
-        self.prod_summary_rows = []
-        self.prod_detail_headers = []
-        self.prod_detail_rows = []
-        self.filtered_prod_detail_rows = []
-
         # date range report configuration
         self.range_start_var = ctk.StringVar()
         self.range_end_var = ctk.StringVar()
@@ -134,14 +114,11 @@ class OrderScraperApp:
 
         # Tabs
         self.tab_control = ctk.CTkTabview(root)
-        self.settings_tab = self.tab_control.add("Settings")
         self.orders_tab = self.tab_control.add("Orders")
-        # new tab for simple database access
-        self.database_tab = self.tab_control.add("Database")
-        # production report tab
-        self.production_tab = self.tab_control.add("Production Report")
         # date range report tab
         self.date_range_tab = self.tab_control.add("Date Range Report")
+        # settings tab on far right
+        self.settings_tab = self.tab_control.add("Settings")
         self.tab_control.pack(expand=1, fill="both")
 
         # Settings Tab
@@ -281,79 +258,6 @@ class OrderScraperApp:
         self.orders_tree.bind("<<TreeviewSelect>>", self.show_report)
         self.orders_tree.bind("<Double-1>", self.export_report)
 
-        # Database Tab view
-        self.db_tree = ttk.Treeview(
-            self.database_tab,
-            columns=("Order", "Company"),
-            show="headings",
-        )
-        self.db_tree.heading("Order", text="Order")
-        self.db_tree.heading("Company", text="Company")
-        self.db_tree.pack(expand=1, fill="both", padx=10, pady=10)
-        ctk.CTkButton(
-            self.database_tab, text="Refresh", command=self.refresh_database_tab
-        ).pack(pady=5)
-
-        # Production Report tab view
-        ctk.CTkLabel(self.production_tab, text="Start Date:").grid(row=0, column=0, padx=5, pady=5)
-        DateEntry(self.production_tab, textvariable=self.prod_start_var, width=12, date_pattern="yyyy-mm-dd").grid(row=0, column=1, padx=5, pady=5)
-        ctk.CTkLabel(self.production_tab, text="End Date:").grid(row=1, column=0, padx=5, pady=5)
-        DateEntry(self.production_tab, textvariable=self.prod_end_var, width=12, date_pattern="yyyy-mm-dd").grid(row=1, column=1, padx=5, pady=5)
-        ctk.CTkLabel(self.production_tab, text="Destination:").grid(row=2, column=0, padx=5, pady=5)
-        ctk.CTkOptionMenu(
-            self.production_tab,
-            variable=self.dest_type_var,
-            values=["CSV", "Google Sheets"],
-            command=self.update_destination_input,
-        ).grid(row=2, column=1, padx=5, pady=5)
-        ctk.CTkLabel(self.production_tab, textvariable=self.dest_label_var).grid(row=3, column=0, padx=5, pady=5)
-        ctk.CTkEntry(self.production_tab, textvariable=self.dest_value_var).grid(row=3, column=1, padx=5, pady=5)
-        self.dest_browse_btn = ctk.CTkButton(
-            self.production_tab, text="Browse", command=self.browse_dest
-        )
-        self.dest_browse_btn.grid(row=3, column=2, padx=5, pady=5)
-        ctk.CTkButton(
-            self.production_tab, text="Run Report", command=self.run_production_report
-        ).grid(row=4, column=0, columnspan=3, pady=10)
-        ctk.CTkLabel(self.production_tab, text="Filter:").grid(row=5, column=0, padx=5, pady=5)
-        p_filter = ctk.CTkEntry(self.production_tab, textvariable=self.prod_filter_var)
-        p_filter.grid(row=5, column=1, columnspan=2, sticky="ew", padx=5, pady=5)
-        self.prod_filter_var.trace_add("write", lambda *args: self.filter_production_detail_rows())
-
-        # Treeviews for displaying report data
-        self.production_tab.grid_rowconfigure(6, weight=1)
-        self.production_tab.grid_rowconfigure(7, weight=1)
-        self.production_tab.grid_columnconfigure(0, weight=1)
-        self.production_tab.grid_columnconfigure(1, weight=1)
-        self.production_tab.grid_columnconfigure(2, weight=1)
-
-        summary_frame = ctk.CTkFrame(self.production_tab)
-        summary_frame.grid(row=6, column=0, columnspan=3, sticky="nsew", padx=10, pady=10)
-        self.prod_summary_tree = ttk.Treeview(summary_frame, show="headings")
-        self.prod_summary_tree.configure(style="Report.Treeview")
-        self.prod_summary_tree.pack(side="left", expand=1, fill="both")
-        sum_scroll = ttk.Scrollbar(summary_frame, orient="vertical", command=self.prod_summary_tree.yview)
-        self.prod_summary_tree.configure(yscrollcommand=sum_scroll.set)
-        sum_scroll.pack(side="right", fill="y")
-        self.prod_summary_tree.tag_configure("even", background="#ffffff")
-        self.prod_summary_tree.tag_configure("odd", background="#f0f0ff")
-
-        detail_frame = ctk.CTkFrame(self.production_tab)
-        detail_frame.grid(row=7, column=0, columnspan=3, sticky="nsew", padx=10, pady=10)
-        self.prod_detail_tree = ttk.Treeview(detail_frame, show="headings")
-        self.prod_detail_tree.configure(style="Report.Treeview")
-        self.prod_detail_tree.pack(side="left", expand=1, fill="both")
-        det_scroll = ttk.Scrollbar(detail_frame, orient="vertical", command=self.prod_detail_tree.yview)
-        self.prod_detail_tree.configure(yscrollcommand=det_scroll.set)
-        det_scroll.pack(side="right", fill="y")
-        self.prod_detail_tree.tag_configure("even", background="#ffffff")
-        self.prod_detail_tree.tag_configure("odd", background="#f0f0ff")
-
-        ctk.CTkButton(
-            self.production_tab, text="Export Report", command=self.export_production_report
-        ).grid(row=8, column=0, columnspan=3, pady=5)
-        self.update_destination_input(self.dest_type_var.get())
-
         # Date Range Report tab view
         control_frame = ctk.CTkFrame(self.date_range_tab)
         control_frame.grid(row=0, column=0, columnspan=7, sticky="ew", padx=10, pady=5)
@@ -385,12 +289,11 @@ class OrderScraperApp:
         ctk.CTkButton(control_frame, text="Filter", command=self.filter_date_range_rows).grid(
             row=1, column=2, padx=5, pady=5
         )
-        ctk.CTkButton(control_frame, text="Expand All", command=self.expand_all_date_rows).grid(
-            row=1, column=3, padx=5, pady=5
+        self.date_rows_expanded = False
+        self.expand_collapse_btn = ctk.CTkButton(
+            control_frame, text="Expand All", command=self.toggle_date_rows
         )
-        ctk.CTkButton(control_frame, text="Collapse All", command=self.collapse_all_date_rows).grid(
-            row=1, column=4, padx=5, pady=5
-        )
+        self.expand_collapse_btn.grid(row=2, column=1, columnspan=2, padx=5, pady=5)
 
         self.date_range_tab.grid_rowconfigure(2, weight=1)
         self.date_range_tab.grid_columnconfigure(0, weight=1)
@@ -449,7 +352,6 @@ class OrderScraperApp:
         ctk.CTkLabel(summary, text="Total Hours:").grid(row=0, column=2, padx=5, pady=5)
         ctk.CTkLabel(summary, textvariable=self.range_total_hours_var).grid(row=0, column=3, padx=5, pady=5)
 
-        self.refresh_database_tab()
         self.schedule_daily_export()
 
         # Relogin timer
@@ -461,6 +363,13 @@ class OrderScraperApp:
             self.refresh_button.configure(state="normal")
             self.schedule_auto_refresh()
             self.get_orders()
+
+        # Ensure the window is sized to show all content
+        try:
+            self.root.update_idletasks()
+            self.root.minsize(self.root.winfo_width(), self.root.winfo_height())
+        except Exception:
+            pass
 
     def login(self, silent=False):
         username = self.username_var.get()
@@ -502,7 +411,7 @@ class OrderScraperApp:
             if not silent:
                 messagebox.showinfo("Login", "Login successful!")
             try:
-                self.tab_control.set("Orders")
+                self.tab_control.set("Date Range Report")
             except Exception:
                 pass
             self.refresh_entry.configure(state="normal")
@@ -604,7 +513,6 @@ class OrderScraperApp:
                     self.orders_tree.insert('', 'end', values=row)
                 except Exception:
                     logger.exception("Error parsing row")
-        self.refresh_database_tab()
 
     def _process_queue_html(self, html):
         """Parse the print-file queue page and record when jobs disappear."""
@@ -1094,142 +1002,6 @@ class OrderScraperApp:
             self.config["export_path"] = path
             self.save_config()
 
-    def update_destination_input(self, choice):
-        """Adjust destination entry controls based on selected output."""
-        if choice == "CSV":
-            self.dest_label_var.set("Output Directory:")
-            if hasattr(self, "dest_browse_btn"):
-                self.dest_browse_btn.configure(state="normal")
-        else:
-            self.dest_label_var.set("Google Sheet ID:")
-            if hasattr(self, "dest_browse_btn"):
-                self.dest_browse_btn.configure(state="disabled")
-
-    def browse_dest(self):
-        path = filedialog.askdirectory(initialdir=self.last_export_dir)
-        if path:
-            self.dest_value_var.set(path)
-            self.last_export_dir = path
-
-    def load_production_events(self, start, end):
-        """Return production events overlapping the given range."""
-        cur = self.db.cursor()
-        cur.execute(
-            "SELECT order_number, workstation, start, end, hours FROM lead_times"
-        )
-        events = []
-        for order, ws, s, e, hours in cur.fetchall():
-            if not s or not e:
-                continue
-            try:
-                s_dt = datetime.fromisoformat(s)
-                e_dt = datetime.fromisoformat(e)
-            except ValueError:
-                continue
-            if e_dt <= start or s_dt >= end:
-                continue
-            events.append(
-                {
-                    "orderId": order,
-                    "workstation": ws,
-                    "startTime": s_dt.isoformat(),
-                    "endTime": e_dt.isoformat(),
-                    "hours": hours,
-                }
-            )
-        return events
-
-    def run_production_report(self):
-        """Generate a production report and display it in the GUI."""
-        start_str = self.prod_start_var.get().strip()
-        end_str = self.prod_end_var.get().strip()
-        if not start_str or not end_str:
-            messagebox.showerror("Production Report", "Start and end dates are required")
-            return
-        try:
-            start_dt = datetime.strptime(start_str, "%Y-%m-%d")
-            end_dt = datetime.strptime(end_str, "%Y-%m-%d")
-        except ValueError:
-            messagebox.showerror("Production Report", "Invalid date format")
-            return
-        if end_dt < start_dt:
-            messagebox.showerror("Production Report", "End date must be after start date")
-            return
-
-        end_excl = end_dt + timedelta(days=1)
-        events = self.load_production_events(start_dt, end_excl)
-        if not events:
-            messagebox.showinfo("Production Report", "No data for range")
-            return
-        try:
-            report = generate_production_report(
-                events, start_dt.isoformat(), end_excl.isoformat()
-            )
-        except Exception as e:
-            messagebox.showerror("Production Report", f"Failed to generate: {e}")
-            return
-
-        # Save report for optional export
-        self.production_report_data = report
-        self.prod_filter_var.set("")
-
-        # Populate summary table and cache rows
-        headers, rows = _build_summary_table(report)
-        self.prod_summary_headers = headers
-        self.prod_summary_rows = rows
-        self.populate_prod_summary_tree(headers, rows)
-
-        # Populate detail table and cache rows
-        d_headers, d_rows = _build_detail_table(report)
-        self.prod_detail_headers = d_headers
-        self.prod_detail_rows = d_rows
-        self.filtered_prod_detail_rows = list(d_rows)
-        self.populate_prod_detail_tree(d_headers, d_rows)
-
-    def populate_prod_summary_tree(self, headers, rows):
-        """Fill the production summary treeview."""
-        self.prod_summary_tree.delete(*self.prod_summary_tree.get_children())
-        self.prod_summary_tree["columns"] = headers
-        for h in headers:
-            anchor = "w" if h == "Workstation" else "e"
-            width = 150 if h == "Workstation" else 100
-            self.prod_summary_tree.heading(h, text=h, command=lambda c=h: self.sort_prod_summary(c))
-            self.prod_summary_tree.column(h, width=width, anchor=anchor)
-        for idx, row in enumerate(rows):
-            tag = "even" if idx % 2 == 0 else "odd"
-            self.prod_summary_tree.insert("", "end", values=row, tags=(tag,))
-
-    def populate_prod_detail_tree(self, headers, rows):
-        """Fill the production detail treeview."""
-        self.prod_detail_tree.delete(*self.prod_detail_tree.get_children())
-        self.prod_detail_tree["columns"] = headers
-        for h in headers:
-            self.prod_detail_tree.heading(h, text=h, command=lambda c=h: self.sort_prod_detail(c))
-            self.prod_detail_tree.column(h, width=120, anchor="w")
-        for idx, row in enumerate(rows):
-            tag = "even" if idx % 2 == 0 else "odd"
-            self.prod_detail_tree.insert("", "end", values=row, tags=(tag,))
-
-    def filter_production_detail_rows(self, *args):
-        term = self.prod_filter_var.get().lower()
-        if not term:
-            rows = self.prod_detail_rows
-        else:
-            rows = [r for r in self.prod_detail_rows if any(term in str(v).lower() for v in r)]
-        self.filtered_prod_detail_rows = rows
-        self.populate_prod_detail_tree(self.prod_detail_headers, rows)
-
-    def sort_prod_summary(self, column, reverse=False):
-        idx = self.prod_summary_headers.index(column)
-        self.prod_summary_rows.sort(key=lambda r: self._sort_key(r[idx]), reverse=reverse)
-        self.populate_prod_summary_tree(self.prod_summary_headers, self.prod_summary_rows)
-        self.prod_summary_tree.heading(column, command=lambda: self.sort_prod_summary(column, not reverse))
-
-    def sort_prod_detail(self, column, reverse=False):
-        idx = self.prod_detail_headers.index(column)
-        self.filtered_prod_detail_rows.sort(key=lambda r: self._sort_key(r[idx]), reverse=reverse)
-        self.populate_prod_detail_tree(self.prod_detail_headers, self.filtered_prod_detail_rows)
-        self.prod_detail_tree.heading(column, command=lambda: self.sort_prod_detail(column, not reverse))
 
     @staticmethod
     def _sort_key(val):
@@ -1237,27 +1009,6 @@ class OrderScraperApp:
             return float(val)
         except (ValueError, TypeError):
             return val
-
-    def export_production_report(self):
-        """Export the last generated production report to the selected destination."""
-        report = getattr(self, "production_report_data", None)
-        if not report:
-            messagebox.showerror("Production Report", "Run report before exporting")
-            return
-        dest = self.dest_type_var.get()
-        target = self.dest_value_var.get().strip()
-        if not target:
-            messagebox.showerror("Production Report", "Destination is required")
-            return
-        try:
-            if dest == "CSV":
-                export_to_csv(report, target)
-            else:
-                export_to_sheets(report, target)
-        except Exception as e:
-            messagebox.showerror("Production Report", f"Export failed: {e}")
-            return
-        messagebox.showinfo("Production Report", "Report exported successfully")
 
     # Date Range Report helpers
     def load_jobs_by_date_range(self, start, end):
@@ -1361,6 +1112,15 @@ class OrderScraperApp:
 
     def collapse_all_date_rows(self):
         self._set_all_date_rows_open(False)
+
+    def toggle_date_rows(self):
+        if self.date_rows_expanded:
+            self.collapse_all_date_rows()
+            self.expand_collapse_btn.configure(text="Expand All")
+        else:
+            self.expand_all_date_rows()
+            self.expand_collapse_btn.configure(text="Collapse All")
+        self.date_rows_expanded = not self.date_rows_expanded
 
     def update_date_range_summary(self, rows):
         total_jobs = len({r["order"] for r in rows})
@@ -1604,13 +1364,6 @@ class OrderScraperApp:
             "CREATE TABLE IF NOT EXISTS lead_times (order_number TEXT, workstation TEXT, start TEXT, end TEXT, hours REAL)"
         )
         self.db.commit()
-
-    def refresh_database_tab(self):
-        """Populate the Database tab with the Orders table contents."""
-        self.db_tree.delete(*self.db_tree.get_children())
-        cur = self.db.cursor()
-        for order, company in cur.execute("SELECT order_number, company FROM orders ORDER BY order_number"):
-            self.db_tree.insert('', 'end', values=(order, company))
 
     def relogin_loop(self):
         while True:
