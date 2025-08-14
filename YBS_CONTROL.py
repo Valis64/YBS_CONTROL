@@ -117,6 +117,8 @@ class OrderScraperApp:
         self.date_range_rows = []
         self.filtered_date_range_rows = []
         self.raw_date_range_rows = []
+        self.filtered_raw_date_range_rows = []
+        self.date_range_filter_var = ctk.StringVar()
 
         # Tabs
         self.tab_control = ctk.CTkTabview(root)
@@ -359,6 +361,13 @@ class OrderScraperApp:
         )
         ctk.CTkButton(control_frame, text="Export CSV", command=self.export_date_range_csv).grid(
             row=0, column=6, padx=5, pady=5
+        )
+        ctk.CTkLabel(control_frame, text="Search:").grid(row=1, column=0, padx=5, pady=5)
+        ctk.CTkEntry(control_frame, textvariable=self.date_range_filter_var).grid(
+            row=1, column=1, padx=5, pady=5
+        )
+        ctk.CTkButton(control_frame, text="Filter", command=self.filter_date_range_rows).grid(
+            row=1, column=2, padx=5, pady=5
         )
 
         self.date_range_tab.grid_rowconfigure(2, weight=1)
@@ -1284,8 +1293,9 @@ class OrderScraperApp:
         grouped_rows = list(grouped.values())
         self.date_range_rows = grouped_rows
         self.filtered_date_range_rows = list(grouped_rows)
+        self.filtered_raw_date_range_rows = list(self.raw_date_range_rows)
         self.populate_date_range_table(grouped_rows)
-        self.update_date_range_summary(self.raw_date_range_rows)
+        self.update_date_range_summary(self.filtered_raw_date_range_rows)
 
     def export_date_range_csv(self):
         """Export the date range report to a CSV file."""
@@ -1331,6 +1341,29 @@ class OrderScraperApp:
                     ])
         messagebox.showinfo("Date Range Report", f"Report written to {path}")
 
+    def filter_date_range_rows(self):
+        term = self.date_range_filter_var.get().lower().strip()
+        if not term:
+            rows = self.date_range_rows
+            raw_rows = self.raw_date_range_rows
+        else:
+            rows = [
+                r
+                for r in self.date_range_rows
+                if term in str(r.get("order", "")).lower()
+                or term in str(r.get("customer", "")).lower()
+            ]
+            raw_rows = [
+                r
+                for r in self.raw_date_range_rows
+                if term in str(r.get("order", "")).lower()
+                or term in str(r.get("customer", "")).lower()
+            ]
+        self.filtered_date_range_rows = rows
+        self.filtered_raw_date_range_rows = raw_rows
+        self.populate_date_range_table(rows)
+        self.update_date_range_summary(raw_rows)
+
     def sort_date_range_table(self, column, reverse=False):
         key_funcs = {
             "order": lambda r: r["order"],
@@ -1341,7 +1374,7 @@ class OrderScraperApp:
             return
         self.filtered_date_range_rows.sort(key=key_funcs[column], reverse=reverse)
         self.populate_date_range_table(self.filtered_date_range_rows)
-        self.update_date_range_summary(self.raw_date_range_rows)
+        self.update_date_range_summary(self.filtered_raw_date_range_rows)
         if column == "order":
             self.date_tree.heading(
                 "#0", command=lambda: self.sort_date_range_table(column, not reverse)
@@ -1357,6 +1390,8 @@ class OrderScraperApp:
         self.date_range_rows = []
         self.filtered_date_range_rows = []
         self.raw_date_range_rows = []
+        self.filtered_raw_date_range_rows = []
+        self.date_range_filter_var.set("")
         self.date_tree.delete(*self.date_tree.get_children())
         self.update_date_range_summary([])
 
