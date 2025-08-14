@@ -4,6 +4,7 @@ from types import SimpleNamespace
 import requests
 import os
 import sqlite3
+import threading
 
 from YBS_CONTROL import OrderScraperApp
 from login_dialog import LoginDialog
@@ -69,6 +70,8 @@ class YBSControlTests(unittest.TestCase):
         self.app.export_path_var = SimpleVar("/tmp")
         self.app.export_time_var = SimpleVar("")
         self.app.export_job = None
+        self.app.queue_orders = set()
+        self.app.db_lock = threading.Lock()
         # bind methods added after object creation
         self.app._run_scheduled_export = OrderScraperApp._run_scheduled_export.__get__(self.app)
         # date range report setup
@@ -231,7 +234,7 @@ class YBSControlTests(unittest.TestCase):
         self.app.db_path_var = SimpleVar("orders.db")
         self.app.db = MagicMock()
         OrderScraperApp.connect_db(self.app, r"\\server\share\orders.db")
-        mock_connect.assert_called_with(r"\\server\share\orders.db")
+        mock_connect.assert_called_with(r"\\server\share\orders.db", check_same_thread=False)
         self.assertEqual(self.app.config["db_path"], r"\\server\share\orders.db")
         expected_dir = os.path.dirname(r"\\server\share\orders.db") or os.getcwd()
         self.assertEqual(self.app.last_db_dir, expected_dir)
@@ -705,6 +708,35 @@ class YBSControlTests(unittest.TestCase):
         self.assertTrue(state["open"])
         tree.identify_row.assert_called_with(10)
         tree.get_children.assert_called_with("order1")
+
+
+class TestDBConcurrency(unittest.TestCase):
+    @patch("YBS_CONTROL.compute_lead_times", return_value={})
+    def test_log_order_thread_safety(self, mock_compute):
+        app = OrderScraperApp.__new__(OrderScraperApp)
+        app.db = sqlite3.connect(":memory:", check_same_thread=False)
+        app.db_lock = threading.Lock()
+        cur = app.db.cursor()
+        cur.execute("CREATE TABLE orders (order_number TEXT PRIMARY KEY, company TEXT)")
+        cur.execute("CREATE TABLE steps (order_number TEXT, step TEXT, timestamp TEXT)")
+        cur.execute(
+            "CREATE TABLE lead_times (order_number TEXT, workstation TEXT, start TEXT, end TEXT, hours REAL)"
+        )
+        app.db.commit()
+
+        def worker(i):
+            app.log_order(str(i), f"Co{i}", [])
+
+        threads = [threading.Thread(target=worker, args=(i,)) for i in range(10)]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
+
+        cur.execute("SELECT order_number FROM orders")
+        rows = {r[0] for r in cur.fetchall()}
+        self.assertEqual(rows, {str(i) for i in range(10)})
+
 
 if __name__ == "__main__":
     unittest.main()
