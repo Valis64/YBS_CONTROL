@@ -3,8 +3,7 @@ from tkinter import messagebox
 import requests
 import os
 
-LOGIN_URL = "https://www.ybsnow.com/index.php"
-ORDERS_URL = "https://www.ybsnow.com/manage.html"
+from config.endpoints import LOGIN_URL, ORDERS_URL
 
 
 class LoginDialog(ctk.CTk):
