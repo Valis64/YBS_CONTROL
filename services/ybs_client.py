@@ -1,9 +1,7 @@
 import os
 import requests
 
-LOGIN_URL = "https://www.ybsnow.com/index.php"
-ORDERS_URL = "https://www.ybsnow.com/manage.html"
-QUEUE_URL = "https://www.ybsnow.com/queue.html"
+from config.endpoints import LOGIN_URL, ORDERS_URL, QUEUE_URL
 
 def login(session, credentials):
     """Attempt to log into YBS.
