@@ -6,7 +6,7 @@ import os
 import sqlite3
 import threading
 
-from YBS_CONTROL import OrderScraperApp
+from ui.order_app import OrderScraperApp
 from login_dialog import LoginDialog
 from datetime import datetime, time
 import time_utils
@@ -95,7 +95,7 @@ class YBSControlTests(unittest.TestCase):
         self.app._process_queue_html = OrderScraperApp._process_queue_html.__get__(self.app)
         self.app.record_print_file_start = OrderScraperApp.record_print_file_start.__get__(self.app)
 
-    @patch("YBS_CONTROL.messagebox")
+    @patch("ui.order_app.messagebox")
     def test_get_orders_request_exception(self, mock_messagebox):
         self.app.session.get.side_effect = requests.RequestException("fail")
         self.app.get_orders()
@@ -124,12 +124,12 @@ class YBSControlTests(unittest.TestCase):
         self.assertTrue(row[1])
 
     def test_process_queue_html_logs_error_on_malformed_html(self):
-        with patch("YBS_CONTROL.BeautifulSoup", side_effect=ValueError("boom")):
-            with self.assertLogs("YBS_CONTROL", level="ERROR") as cm:
+        with patch("ui.order_app.BeautifulSoup", side_effect=ValueError("boom")):
+            with self.assertLogs("ui.order_app", level="ERROR") as cm:
                 self.app._process_queue_html("<bad>")
         self.assertTrue(any("Error processing queue HTML" in msg for msg in cm.output))
 
-    @patch("YBS_CONTROL.messagebox")
+    @patch("ui.order_app.messagebox")
     def test_parse_company_and_order_from_same_cell(self, mock_messagebox):
         html = (
             "<table><tbody id='table'>"
@@ -150,7 +150,7 @@ class YBSControlTests(unittest.TestCase):
         args, kwargs = self.app.orders_tree.insert.call_args
         self.assertEqual(kwargs["values"], ("12345", "ACME Corp", "Running", "High"))
 
-    @patch("YBS_CONTROL.messagebox")
+    @patch("ui.order_app.messagebox")
     def test_parse_company_and_order_from_separate_cells(self, mock_messagebox):
         html = (
             "<table><tbody id='table'>"
@@ -174,7 +174,7 @@ class YBSControlTests(unittest.TestCase):
             ("35264", "Velocity Production and Packaging", "", ""),
         )
 
-    @patch("YBS_CONTROL.messagebox")
+    @patch("ui.order_app.messagebox")
     def test_parse_company_skips_placeholder_in_first_cell(self, mock_messagebox):
         html = (
             "<table><tbody id='table'>"
@@ -222,7 +222,7 @@ class YBSControlTests(unittest.TestCase):
         self.assertEqual(insert_calls[0].kwargs["values"][0], "Cutting")
         self.assertEqual(insert_calls[1].kwargs["values"][0], "Welding")
 
-    @patch("YBS_CONTROL.messagebox")
+    @patch("ui.order_app.messagebox")
     def test_get_date_range_invalid_order(self, mock_messagebox):
         self.app.start_date_var = SimpleVar("2024-01-02")
         self.app.end_date_var = SimpleVar("2024-01-01")
@@ -231,7 +231,7 @@ class YBSControlTests(unittest.TestCase):
         self.assertIsNone(end)
         mock_messagebox.showerror.assert_called_once()
 
-    @patch("YBS_CONTROL.sqlite3.connect")
+    @patch("data.db.sqlite3.connect")
     def test_connect_db_allows_network_path(self, mock_connect):
         mock_conn = MagicMock()
         mock_cursor = MagicMock()
@@ -246,7 +246,7 @@ class YBSControlTests(unittest.TestCase):
         self.assertEqual(self.app.last_db_dir, expected_dir)
         self.app.save_config.assert_called_once()
 
-    @patch("YBS_CONTROL.messagebox")
+    @patch("ui.order_app.messagebox")
     def test_update_business_hours_valid(self, mock_messagebox):
         self.app.business_start_var = SimpleVar("09:00")
         self.app.business_end_var = SimpleVar("17:00")
@@ -263,7 +263,7 @@ class YBSControlTests(unittest.TestCase):
         time_utils.BUSINESS_START = time(8, 0)
         time_utils.BUSINESS_END = time(16, 30)
 
-    @patch("YBS_CONTROL.compute_lead_times")
+    @patch("ui.order_app.compute_lead_times")
     def test_update_analytics_chart_calls_compute(self, mock_compute):
         self.app.analytics_ax = MagicMock()
         self.app.analytics_canvas = MagicMock()
@@ -278,21 +278,21 @@ class YBSControlTests(unittest.TestCase):
         self.app.analytics_ax.bar.assert_called_once()
         self.app.analytics_canvas.draw.assert_called_once()
 
-    @patch("YBS_CONTROL.threading.Thread")
-    @patch("YBS_CONTROL.OrderScraperApp.connect_db")
-    @patch("YBS_CONTROL.OrderScraperApp.load_config", return_value={"business_start": "09:00", "business_end": "17:00", "db_path": "orders.db"})
-    @patch("YBS_CONTROL.ttk.Style")
-    @patch("YBS_CONTROL.ttk.Scrollbar")
-    @patch("YBS_CONTROL.ttk.Treeview")
-    @patch("YBS_CONTROL.FigureCanvasTkAgg")
-    @patch("YBS_CONTROL.Figure")
-    @patch("YBS_CONTROL.ctk.CTkFrame")
-    @patch("YBS_CONTROL.ctk.CTkButton")
-    @patch("YBS_CONTROL.ctk.CTkEntry")
-    @patch("YBS_CONTROL.ctk.CTkLabel")
-    @patch("YBS_CONTROL.ctk.CTkTabview")
-    @patch("YBS_CONTROL.ctk.IntVar", side_effect=lambda value=0: SimpleVar(value))
-    @patch("YBS_CONTROL.ctk.StringVar", side_effect=lambda value="": SimpleVar(value))
+    @patch("ui.order_app.threading.Thread")
+    @patch("ui.order_app.OrderScraperApp.connect_db")
+    @patch("ui.order_app.OrderScraperApp.load_config", return_value={"business_start": "09:00", "business_end": "17:00", "db_path": "orders.db"})
+    @patch("ui.order_app.ttk.Style")
+    @patch("ui.order_app.ttk.Scrollbar")
+    @patch("ui.order_app.ttk.Treeview")
+    @patch("ui.order_app.FigureCanvasTkAgg")
+    @patch("ui.order_app.Figure")
+    @patch("ui.order_app.ctk.CTkFrame")
+    @patch("ui.order_app.ctk.CTkButton")
+    @patch("ui.order_app.ctk.CTkEntry")
+    @patch("ui.order_app.ctk.CTkLabel")
+    @patch("ui.order_app.ctk.CTkTabview")
+    @patch("ui.order_app.ctk.IntVar", side_effect=lambda value=0: SimpleVar(value))
+    @patch("ui.order_app.ctk.StringVar", side_effect=lambda value="": SimpleVar(value))
     def test_init_uses_config_business_hours(
         self,
         mock_stringvar,
@@ -324,7 +324,7 @@ class YBSControlTests(unittest.TestCase):
         time_utils.BUSINESS_START = time(8, 0)
         time_utils.BUSINESS_END = time(16, 30)
 
-    @patch("YBS_CONTROL.filedialog.askopenfilename", return_value="/tmp/orders.db")
+    @patch("ui.order_app.filedialog.askopenfilename", return_value="/tmp/orders.db")
     def test_browse_db_uses_last_directory(self, mock_dialog):
         self.app.last_db_dir = "/tmp"
         self.app.connect_db = MagicMock()
@@ -334,7 +334,7 @@ class YBSControlTests(unittest.TestCase):
         self.assertEqual(kwargs.get("initialdir"), "/tmp")
         self.app.connect_db.assert_called_with("/tmp/orders.db")
 
-    @patch("YBS_CONTROL.filedialog.askdirectory", return_value="/exports")
+    @patch("ui.order_app.filedialog.askdirectory", return_value="/exports")
     def test_browse_export_path_uses_last_directory(self, mock_dialog):
         self.app.last_export_dir = "/tmp"
         self.app.export_path_var = SimpleVar("")
@@ -348,7 +348,7 @@ class YBSControlTests(unittest.TestCase):
         self.assertEqual(self.app.config["export_path"], "/exports")
         self.app.save_config.assert_called_once()
 
-    @patch("YBS_CONTROL.messagebox")
+    @patch("ui.order_app.messagebox")
     def test_handle_login_response_triggers_get_orders_only_on_success(self, mock_messagebox):
         self.app.get_orders = MagicMock()
         self.app.refresh_entry = MagicMock()
@@ -366,7 +366,7 @@ class YBSControlTests(unittest.TestCase):
         self.app._handle_login_response(mock_resp)
         self.app.get_orders.assert_called_once()
 
-    @patch("YBS_CONTROL.messagebox")
+    @patch("ui.order_app.messagebox")
     def test_handle_login_response_silent(self, mock_messagebox):
         self.app.get_orders = MagicMock()
         self.app.refresh_entry = MagicMock()
@@ -395,9 +395,9 @@ class YBSControlTests(unittest.TestCase):
         callbacks['func']()
         self.app.export_date_range.assert_called_once()
 
-    @patch("YBS_CONTROL.write_realtime_report")
-    @patch("YBS_CONTROL.generate_realtime_report", return_value=[("123", "Cut", datetime(2024, 1, 1, 8, 0), datetime(2024, 1, 1, 9, 0), 1.0)])
-    @patch("YBS_CONTROL.messagebox")
+    @patch("ui.order_app.write_realtime_report")
+    @patch("ui.order_app.generate_realtime_report", return_value=[("123", "Cut", datetime(2024, 1, 1, 8, 0), datetime(2024, 1, 1, 9, 0), 1.0)])
+    @patch("ui.order_app.messagebox")
     def test_export_realtime_report(self, mock_messagebox, mock_generate, mock_write):
         self.app.start_date_var = SimpleVar("")
         self.app.end_date_var = SimpleVar("")
@@ -413,7 +413,7 @@ class YBSControlTests(unittest.TestCase):
 
 
 
-    @patch("YBS_CONTROL.messagebox")
+    @patch("ui.order_app.messagebox")
     def test_run_date_range_report_populates_table_and_summary(self, mock_messagebox):
         self.app.range_start_var = SimpleVar("2024-01-01")
         self.app.range_end_var = SimpleVar("2024-01-02")
@@ -538,7 +538,7 @@ class YBSControlTests(unittest.TestCase):
             ["WS1", "WS2"],
         )
 
-    @patch("YBS_CONTROL.messagebox")
+    @patch("ui.order_app.messagebox")
     def test_run_date_range_report_adds_missing_steps_and_sets_in_progress(self, mock_messagebox):
         self.app.range_start_var = SimpleVar("2024-01-01")
         self.app.range_end_var = SimpleVar("2024-01-03")
@@ -647,7 +647,7 @@ class YBSControlTests(unittest.TestCase):
         self.assertEqual(calls[3].args[0], "")
         self.assertEqual(calls[3].kwargs["text"], "TOTAL")
 
-    @patch("YBS_CONTROL.messagebox")
+    @patch("ui.order_app.messagebox")
     def test_filter_date_range_rows_and_sorting(self, mock_messagebox):
         self.app.range_start_var = SimpleVar("2024-01-01")
         self.app.range_end_var = SimpleVar("2024-01-03")
@@ -717,7 +717,7 @@ class YBSControlTests(unittest.TestCase):
 
 
 class TestDBConcurrency(unittest.TestCase):
-    @patch("YBS_CONTROL.compute_lead_times", return_value={})
+    @patch("ui.order_app.compute_lead_times", return_value={})
     def test_log_order_thread_safety(self, mock_compute):
         app = OrderScraperApp.__new__(OrderScraperApp)
         app.db = sqlite3.connect(":memory:", check_same_thread=False)
