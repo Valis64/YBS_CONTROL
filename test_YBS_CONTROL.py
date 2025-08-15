@@ -124,7 +124,7 @@ class YBSControlTests(unittest.TestCase):
         self.assertTrue(row[1])
 
     def test_process_queue_html_logs_error_on_malformed_html(self):
-        with patch("ui.order_app.BeautifulSoup", side_effect=ValueError("boom")):
+        with patch("ui.order_app.parse_queue", side_effect=ValueError("boom")):
             with self.assertLogs("ui.order_app", level="ERROR") as cm:
                 self.app._process_queue_html("<bad>")
         self.assertTrue(any("Error processing queue HTML" in msg for msg in cm.output))

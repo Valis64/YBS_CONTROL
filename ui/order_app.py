@@ -2,7 +2,6 @@ import customtkinter as ctk
 from tkinter import ttk, messagebox, filedialog
 import threading
 import requests
-from bs4 import BeautifulSoup
 import time
 import os
 import re
@@ -31,6 +30,7 @@ from services.ybs_client import (
     login as service_login,
     fetch_orders as service_fetch_orders,
 )
+from parsers.manage_html import parse_orders, parse_queue
 
 logging.basicConfig(
     level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s"
@@ -462,84 +462,30 @@ class OrderScraperApp:
             thread.join()
 
     def _process_orders_html(self, html):
-        soup = BeautifulSoup(html, 'html.parser')
-        tbody = soup.find('tbody', id='table')
+        orders = parse_orders(html)
         self.orders_tree.delete(*self.orders_tree.get_children())
         self.order_rows = []
-        if tbody:
-            for tr in tbody.find_all('tr'):
-                tds = tr.find_all('td')
-                try:
-                    # Some rows place the company name and order number in the
-                    # same table cell.  Collect the string fragments from that
-                    # cell and split out the first textual fragment as the
-                    # company name and the first fragment containing digits as
-                    # the order number.  This keeps each value under the
-                    # correct heading in the UI.
-                    cell_parts = list(tds[0].stripped_strings)
-                    order_num = ""
-                    company = ""
-                    for part in cell_parts:
-                        if not order_num and re.search(r"\d", part):
-                            match = re.search(r"([A-Za-z0-9_-]+)$", part)
-                            order_num = match.group(1) if match else re.sub(r"[^A-Za-z0-9_-]", "", part)
-                        elif not company and re.search(r"[A-Za-z]", part):
-                            company = part
-
-                    if (not company or company == "?") and len(tds) > 1:
-                        for text in tds[1].stripped_strings:
-                            company = text
-                            break
-
-                    # Remaining columns contain status and priority, but the
-                    # page includes spacer cells.  Use indexes 2 and 4 rather
-                    # than 1 and 3 to skip those spacers when present.
-                    status = tds[2].get_text(strip=True) if len(tds) > 2 else ""
-                    priority = ""
-                    if len(tds) > 4:
-                        pri_input = tds[4].find("input")
-                        priority = pri_input.get("value") if pri_input else tds[4].get_text(strip=True)
-
-                    steps = []
-                    for li in tr.select('ul.workplaces li'):
-                        step_p = li.find('p')
-                        step_name = re.sub(r'^\d+', '', step_p.get_text(strip=True)) if step_p else ''
-                        time_p = li.find('p', class_='np')
-                        ts = None
-                        if time_p:
-                            text = time_p.get_text(strip=True).replace('\xa0', '').strip()
-                            if text:
-                                try:
-                                    ts = datetime.strptime(text, "%m/%d/%y %H:%M")
-                                except ValueError:
-                                    pass
-                        steps.append((step_name, ts))
-
-                    self.log_order(order_num, company, steps)
-                    row = (order_num, company, status, priority)
-                    self.order_rows.append(row)
-                    self.orders_tree.insert('', 'end', values=row)
-                except Exception:
-                    logger.exception("Error parsing row")
+        for order in orders:
+            self.log_order(
+                order.number,
+                order.company,
+                [(step.name, step.timestamp) for step in order.steps],
+            )
+            row = (order.number, order.company, order.status, order.priority)
+            self.order_rows.append(row)
+            self.orders_tree.insert('', 'end', values=row)
 
     def _process_queue_html(self, html):
         """Parse the print-file queue page and record when jobs disappear."""
         try:
-            soup = BeautifulSoup(html, "html.parser")
-            tbody = soup.find("tbody")
-            current = set()
-            if tbody:
-                for tr in tbody.find_all("tr"):
-                    td_text = tr.get_text(" ", strip=True)
-                    match = re.search(r"([A-Za-z0-9_-]*\d+[A-Za-z0-9_-]*)", td_text)
-                    if match:
-                        current.add(match.group(1))
-            disappeared = self.queue_orders - current
-            for order in disappeared:
-                self.record_print_file_start(order)
-            self.queue_orders = current
+            current = parse_queue(html)
         except Exception:
             logger.exception("Error processing queue HTML")
+            return
+        disappeared = self.queue_orders - current
+        for order in disappeared:
+            self.record_print_file_start(order)
+        self.queue_orders = current
 
     def record_print_file_start(self, order_number):
         db.record_print_file_start(self.db, self.db_lock, order_number)
