@@ -349,32 +349,30 @@ class YBSControlTests(unittest.TestCase):
         self.app.save_config.assert_called_once()
 
     @patch("ui.order_app.messagebox")
-    def test_handle_login_response_triggers_get_orders_only_on_success(self, mock_messagebox):
+    def test_handle_login_result_triggers_get_orders_only_on_success(self, mock_messagebox):
         self.app.get_orders = MagicMock()
         self.app.refresh_entry = MagicMock()
         self.app.refresh_button = MagicMock()
         self.app.schedule_auto_refresh = MagicMock()
-        mock_resp = MagicMock()
 
         # simulate login failure
-        mock_resp.text = "login failed"
-        self.app._handle_login_response(mock_resp)
+        result = {"success": False}
+        self.app._handle_login_result(result)
         self.app.get_orders.assert_not_called()
 
         # simulate login success
-        mock_resp.text = "logout"
-        self.app._handle_login_response(mock_resp)
+        result = {"success": True}
+        self.app._handle_login_result(result)
         self.app.get_orders.assert_called_once()
 
     @patch("ui.order_app.messagebox")
-    def test_handle_login_response_silent(self, mock_messagebox):
+    def test_handle_login_result_silent(self, mock_messagebox):
         self.app.get_orders = MagicMock()
         self.app.refresh_entry = MagicMock()
         self.app.refresh_button = MagicMock()
         self.app.schedule_auto_refresh = MagicMock()
-        mock_resp = MagicMock()
-        mock_resp.text = "logout"
-        self.app._handle_login_response(mock_resp, silent=True)
+        result = {"success": True}
+        self.app._handle_login_result(result, silent=True)
         mock_messagebox.showinfo.assert_not_called()
         self.app.get_orders.assert_called_once()
 

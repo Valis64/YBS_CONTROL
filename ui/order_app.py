@@ -24,19 +24,18 @@ from manage_html_report import (
 )
 import time_utils
 from time_utils import business_hours_delta, business_hours_breakdown
+from services.ybs_client import (
+    LOGIN_URL,
+    ORDERS_URL,
+    QUEUE_URL,
+    login as service_login,
+    fetch_orders as service_fetch_orders,
+)
 
 logging.basicConfig(
     level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s"
 )
 logger = logging.getLogger(__name__)
-
-# Default login endpoint on ybsnow.com. The site currently posts the login form
-# to ``index.php`` with fields named "email", "password" and a hidden
-# ``action=signin`` value.  Keep this configurable so the user can override it
-# if the endpoint changes again in the future.
-LOGIN_URL = "https://www.ybsnow.com/index.php"
-ORDERS_URL = "https://www.ybsnow.com/manage.html"
-QUEUE_URL = "https://www.ybsnow.com/queue.html"
 
 class OrderScraperApp:
     def __init__(
@@ -380,19 +379,18 @@ class OrderScraperApp:
     def login(self, silent=False):
         username = self.username_var.get()
         password = self.password_var.get()
-        # The login form uses "email" and a hidden "action" field set to
-        # "signin".  Submit those values so the session authenticates
-        # correctly.
-        data = {
-            'email': username,
-            'password': password,
-            'action': 'signin',
-        }
         login_url = self.login_url_var.get() or LOGIN_URL
+        orders_url = self.orders_url_var.get() or ORDERS_URL
+        credentials = {
+            "username": username,
+            "password": password,
+            "login_url": login_url,
+            "orders_url": orders_url,
+        }
 
         def worker():
             try:
-                resp = self.session.post(login_url, data=data, timeout=10)
+                result = service_login(self.session, credentials)
             except requests.RequestException as e:
                 if not silent:
                     if hasattr(self, "root") and self.root:
@@ -401,18 +399,17 @@ class OrderScraperApp:
                         messagebox.showerror("Login", f"Login request failed: {e}")
                 return
             if hasattr(self, "root") and self.root:
-                self.root.after(0, lambda: self._handle_login_response(resp, silent))
+                self.root.after(0, lambda: self._handle_login_result(result, silent))
             else:
-                self._handle_login_response(resp, silent)
+                self._handle_login_result(result, silent)
 
         thread = threading.Thread(target=worker, daemon=True)
         thread.start()
         if not hasattr(self, "root") or not self.root:
             thread.join()
 
-    def _handle_login_response(self, resp, silent=False):
-        orders_page = os.path.basename(self.orders_url_var.get() or ORDERS_URL).lower()
-        if "logout" in resp.text.lower() or orders_page in resp.text.lower():
+    def _handle_login_result(self, result, silent=False):
+        if result.get("success"):
             self.logged_in = True
             if not silent:
                 messagebox.showinfo("Login", "Login successful!")
@@ -438,8 +435,7 @@ class OrderScraperApp:
 
         def worker():
             try:
-                resp_orders = self.session.get(orders_url, timeout=10)
-                resp_queue = self.session.get(QUEUE_URL, timeout=10)
+                result = service_fetch_orders(self.session, orders_url=orders_url, queue_url=QUEUE_URL)
             except requests.RequestException as e:
                 if hasattr(self, "root") and self.root:
                     self.root.after(0, lambda: messagebox.showerror("Error", f"Failed to fetch orders: {e}"))
@@ -451,14 +447,14 @@ class OrderScraperApp:
             # run on the Tkinter thread via ``root.after`` to avoid touching
             # the SQLite connection from this worker thread.
             if hasattr(self, "root") and self.root:
-                self.root.after(0, lambda: self._process_queue_html(resp_queue.text))
-                self.root.after(0, lambda: self._process_orders_html(resp_orders.text))
+                self.root.after(0, lambda: self._process_queue_html(result["queue_html"]))
+                self.root.after(0, lambda: self._process_orders_html(result["orders_html"]))
             else:
                 try:
-                    self._process_queue_html(resp_queue.text)
+                    self._process_queue_html(result["queue_html"])
                 except Exception:
                     pass  # _process_queue_html logs any parsing errors
-                self._process_orders_html(resp_orders.text)
+                self._process_orders_html(result["orders_html"])
 
         thread = threading.Thread(target=worker, daemon=True)
         thread.start()
