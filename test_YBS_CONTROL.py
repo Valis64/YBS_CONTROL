@@ -6,7 +6,7 @@ import os
 import sqlite3
 import threading
 
-from ui.order_app import OrderScraperApp
+from ui.order_app import OrderScraperApp, OrderRow, JobStep
 from login_dialog import LoginDialog
 from datetime import datetime, time
 import time_utils
@@ -206,7 +206,7 @@ class YBSControlTests(unittest.TestCase):
         self.app.orders_tree.item.return_value = ("123",)
         # steps contain a workstation without a timestamp
         t1 = datetime(2024, 1, 1, 8, 0)
-        self.app.load_steps = MagicMock(return_value=[("Cutting", t1), ("Welding", None)])
+        self.app.load_steps = MagicMock(return_value=[JobStep("Cutting", t1), JobStep("Welding", None)])
         self.app.load_lead_times = MagicMock(return_value=[])
         self.app.report_tree = MagicMock()
         db_cursor = MagicMock()
@@ -270,8 +270,8 @@ class YBSControlTests(unittest.TestCase):
         self.app.analytics_start_var = SimpleVar("")
         self.app.analytics_end_var = SimpleVar("")
         self.app.analytics_job_var = SimpleVar("")
-        self.app.order_rows = [("123", "ACME", "Running", "High")]
-        self.app.load_steps = MagicMock(return_value=[("Cutting", datetime(2024, 1, 1, 8, 0)), ("Welding", datetime(2024, 1, 1, 12, 0))])
+        self.app.order_rows = [OrderRow("123", "ACME", "Running", "High")]
+        self.app.load_steps = MagicMock(return_value=[JobStep("Cutting", datetime(2024, 1, 1, 8, 0)), JobStep("Welding", datetime(2024, 1, 1, 12, 0))])
         mock_compute.return_value = {"123": [{"hours": 4, "workstation": "Welding"}]}
         OrderScraperApp.update_analytics_chart(self.app)
         mock_compute.assert_called_once()
