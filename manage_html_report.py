@@ -147,15 +147,15 @@ def write_realtime_report(report, csv_path, html_path):
         html_lines.append(f"<th>{h}</th>")
     html_lines.extend(["</tr></thead>", "<tbody>"])
     for job, workstation, start, end, hours in rows:
-        html_lines.append(
-            "<tr>"
-            f"<td>{job}</td>"
-            f"<td>{workstation}</td>"
-            f"<td>{start.strftime(HTML_DATE_FORMAT)}</td>"
-            f"<td>{end.strftime(HTML_DATE_FORMAT)}</td>"
-            f"<td>{hours:.2f}</td>"
-            "</tr>"
-        )
+        html_lines.extend([
+            "<tr>",
+            f"<td>{job}</td>",
+            f"<td>{workstation}</td>",
+            f"<td>{start.strftime(HTML_DATE_FORMAT)}</td>",
+            f"<td>{end.strftime(HTML_DATE_FORMAT)}</td>",
+            f"<td>{hours:.2f}</td>",
+            "</tr>",
+        ])
     html_lines.extend(["</tbody>", "</table>"])
     with open(html_path, "w", encoding="utf-8") as f:
         f.write("\n".join(html_lines))
