@@ -9,11 +9,12 @@ from login_dialog import LoginDialog
 
 
 def main():
-    dialog = LoginDialog()
-    dialog.mainloop()
+    root = ctk.CTk()
+    dialog = LoginDialog(root)
+    dialog.grab_set()
+    root.wait_window(dialog)
     if not dialog.authenticated:
         return
-    root = ctk.CTk()
     OrderScraperApp(
         root,
         session=dialog.session,
