@@ -15,22 +15,39 @@ class LoginDialog(ctk.CTkToplevel):
 
         self.username_var = ctk.StringVar()
         self.password_var = ctk.StringVar()
-        self.login_url_var = ctk.StringVar(value=LOGIN_URL)
-        self.orders_url_var = ctk.StringVar(value=ORDERS_URL)
+        self.login_url_var = ctk.StringVar()
+        self.orders_url_var = ctk.StringVar()
 
-        ctk.CTkLabel(self, text="Username:").grid(row=0, column=0, padx=5, pady=5)
-        ctk.CTkEntry(self, textvariable=self.username_var).grid(row=0, column=1, padx=5, pady=5)
-        ctk.CTkLabel(self, text="Password:").grid(row=1, column=0, padx=5, pady=5)
-        ctk.CTkEntry(self, textvariable=self.password_var, show="*").grid(row=1, column=1, padx=5, pady=5)
-        ctk.CTkLabel(self, text="Login URL:").grid(row=2, column=0, padx=5, pady=5)
-        ctk.CTkEntry(self, textvariable=self.login_url_var).grid(row=2, column=1, padx=5, pady=5)
-        ctk.CTkLabel(self, text="Orders URL:").grid(row=3, column=0, padx=5, pady=5)
-        ctk.CTkEntry(self, textvariable=self.orders_url_var).grid(row=3, column=1, padx=5, pady=5)
+        ctk.CTkEntry(
+            self,
+            textvariable=self.username_var,
+            placeholder_text="Username",
+        ).grid(row=0, column=0, columnspan=2, padx=5, pady=5)
+        ctk.CTkEntry(
+            self,
+            textvariable=self.password_var,
+            show="*",
+            placeholder_text="Password",
+        ).grid(row=1, column=0, columnspan=2, padx=5, pady=5)
+        ctk.CTkEntry(
+            self,
+            textvariable=self.login_url_var,
+            placeholder_text="Login URL",
+        ).grid(row=2, column=0, columnspan=2, padx=5, pady=5)
+        ctk.CTkEntry(
+            self,
+            textvariable=self.orders_url_var,
+            placeholder_text="Orders URL",
+        ).grid(row=3, column=0, columnspan=2, padx=5, pady=5)
         ctk.CTkButton(self, text="Login", command=self.login).grid(row=4, column=0, columnspan=2, pady=10)
 
     def login(self, silent=False):
-        username = self.username_var.get()
-        password = self.password_var.get()
+        username = self.username_var.get().strip()
+        password = self.password_var.get().strip()
+        if not username or not password:
+            if not silent:
+                messagebox.showerror("Login", "Username and password cannot be blank.")
+            return
         data = {
             "email": username,
             "password": password,
