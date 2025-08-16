@@ -4,7 +4,6 @@ import customtkinter as ctk
 from tkinter import ttk, messagebox, filedialog
 import threading
 import requests  # type: ignore[import-untyped]
-import time
 import os
 from datetime import datetime, timedelta
 import csv
@@ -22,10 +21,7 @@ from manage_html_report import (
 )
 import time_utils
 from time_utils import business_hours_delta
-from services.ybs_client import (
-    LOGIN_URL,
-    login as service_login,
-)
+from config.endpoints import ORDERS_URL
 
 logging.basicConfig(
     level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s"
@@ -46,9 +42,7 @@ class OrderScraperApp:
         self,
         root: Any,
         session: Optional[requests.Session] = None,
-        username: str = "",
-        password: str = "",
-        login_url: str = LOGIN_URL,
+        orders_url: str = ORDERS_URL,
     ) -> None:
         self.root = root
         self.root.title("Order Scraper")
@@ -61,7 +55,7 @@ class OrderScraperApp:
             pass
 
         self.session = session or requests.Session()
-        self.logged_in = session is not None
+        self.orders_url = orders_url
 
         self.config = self.load_config()
 
@@ -86,9 +80,6 @@ class OrderScraperApp:
             except ValueError:
                 pass
 
-        self.username_var = ctk.StringVar(value=username)
-        self.password_var = ctk.StringVar(value=password)
-        self.login_url_var = ctk.StringVar(value=login_url)
         # export configuration
         export_path = self.config.get("export_path", os.getcwd())
         self.export_path_var = ctk.StringVar(value=export_path)
@@ -232,60 +223,12 @@ class OrderScraperApp:
 
         self.schedule_daily_export()
 
-        # Relogin timer
-        self.relogin_thread = threading.Thread(target=self.relogin_loop, daemon=True)
-        self.relogin_thread.start()
-
         # Ensure the window is sized to show all content
         try:
             self.root.update_idletasks()
             self.root.minsize(self.root.winfo_width(), self.root.winfo_height())
         except Exception:
             pass
-
-    def login(self, silent: bool = False) -> None:
-        username = self.username_var.get()
-        password = self.password_var.get()
-        login_url = self.login_url_var.get() or LOGIN_URL
-        credentials = {
-            "username": username,
-            "password": password,
-            "login_url": login_url,
-        }
-
-        def worker():
-            try:
-                result = service_login(self.session, credentials)
-            except requests.RequestException as e:
-                if not silent:
-                    if hasattr(self, "root") and self.root:
-                        self.root.after(0, lambda: messagebox.showerror("Login", f"Login request failed: {e}"))
-                    else:
-                        messagebox.showerror("Login", f"Login request failed: {e}")
-                return
-            if hasattr(self, "root") and self.root:
-                self.root.after(0, lambda: self._handle_login_result(result, silent))
-            else:
-                self._handle_login_result(result, silent)
-
-        thread = threading.Thread(target=worker, daemon=True)
-        thread.start()
-        if not hasattr(self, "root") or not self.root:
-            thread.join()
-
-    def _handle_login_result(self, result, silent=False):
-        if result.get("success"):
-            self.logged_in = True
-            if not silent:
-                messagebox.showinfo("Login", "Login successful!")
-            try:
-                self.tab_control.set("Date Range Report")
-            except Exception:
-                pass
-        else:
-            self.logged_in = False
-            if not silent:
-                messagebox.showerror("Login", "Login failed.")
 
     def load_steps(self, order_number: str) -> list[JobStep]:
         raw = db.load_steps(self.db, self.db_lock, order_number)
@@ -742,11 +685,4 @@ class OrderScraperApp:
         self.last_db_dir = os.path.dirname(path) or os.getcwd()
         self.save_config()
         self.db, self.db_lock = db.connect_db(path)
-
-    def relogin_loop(self) -> None:
-        while True:
-            time.sleep(2*60*60)  # 2 hours
-            if self.logged_in:
-                print("Relogging in...")
-                self.root.after(0, lambda: self.login(silent=True))
 
