@@ -169,6 +169,10 @@ class OrderScraperApp:
         table_frame = ctk.CTkFrame(self.date_range_tab)
         table_frame.grid(row=2, column=0, columnspan=7, sticky="nsew", padx=10, pady=10)
 
+        # Style to enlarge each row for better readability
+        style = ttk.Style(self.root)
+        style.configure("DateTreeview", rowheight=28, padding=(0, 4))
+
         columns = (
             "company",
             "workstation",
@@ -178,7 +182,7 @@ class OrderScraperApp:
             "status",
         )
         self.date_tree = ttk.Treeview(
-            table_frame, columns=columns, show="tree headings"
+            table_frame, columns=columns, show="tree headings", style="DateTreeview"
         )
         self.date_tree.heading(
             "#0",
@@ -195,6 +199,14 @@ class OrderScraperApp:
             "Hours",
             "Status",
         ]
+        column_widths = {
+            "company": 180,
+            "workstation": 150,
+            "start": 160,
+            "end": 160,
+            "hours": 80,
+            "status": 120,
+        }
         for col, head in zip(columns, headings):
             self.date_tree.heading(
                 col,
@@ -202,7 +214,12 @@ class OrderScraperApp:
                 anchor="center",
                 command=lambda c=col: self.sort_date_range_table(c),  # type: ignore[call-overload]
             )
-            self.date_tree.column(col, anchor="center")
+            self.date_tree.column(
+                col,
+                anchor="center",
+                width=column_widths.get(col, 100),
+                stretch=True,
+            )
         self.date_tree.pack(side="left", expand=1, fill="both")
         scroll = ttk.Scrollbar(table_frame, orient="vertical", command=self.date_tree.yview)
         self.date_tree.configure(yscrollcommand=scroll.set)
