@@ -4,3 +4,4 @@ matplotlib
 pytest
 requests
 tkcalendar
+mypy

@@ -1,13 +1,17 @@
+from __future__ import annotations
+
 import customtkinter as ctk
 from tkinter import ttk, messagebox, filedialog
 import threading
-import requests
+import requests  # type: ignore[import-untyped]
 import time
 import os
 import re
 from datetime import datetime, timedelta
 import csv
 import logging
+from dataclasses import dataclass
+from typing import Any, Optional
 from tkcalendar import DateEntry
 
 from config.settings import load_config as load_config_file, save_config as save_config_file
@@ -37,16 +41,34 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+
+@dataclass
+class JobStep:
+    """Representation of a single job step."""
+
+    name: str
+    timestamp: Optional[datetime]
+
+
+@dataclass
+class OrderRow:
+    """Row data for the orders table."""
+
+    number: str
+    company: str
+    status: str
+    priority: str
+
 class OrderScraperApp:
     def __init__(
         self,
-        root,
-        session=None,
-        username="",
-        password="",
-        login_url=LOGIN_URL,
-        orders_url=ORDERS_URL,
-    ):
+        root: Any,
+        session: Optional[requests.Session] = None,
+        username: str = "",
+        password: str = "",
+        login_url: str = LOGIN_URL,
+        orders_url: str = ORDERS_URL,
+    ) -> None:
         self.root = root
         self.root.title("Order Scraper")
         # Make the main window slightly wider so the Date Range Report tab has
@@ -66,6 +88,8 @@ class OrderScraperApp:
         db_path = self.config.get("db_path", "orders.db")
         self.db_path_var = ctk.StringVar(value=db_path)
         self.last_db_dir = os.path.dirname(db_path) or os.getcwd()
+        self.db: Any = None
+        self.db_lock: Any = threading.Lock()
         self.connect_db(db_path)
 
         # Load business hours from config if available
@@ -81,7 +105,7 @@ class OrderScraperApp:
             except ValueError:
                 pass
 
-        self.order_rows = []
+        self.order_rows: list[OrderRow] = []
 
         self.username_var = ctk.StringVar(value=username)
         self.password_var = ctk.StringVar(value=password)
@@ -89,9 +113,9 @@ class OrderScraperApp:
         self.orders_url_var = ctk.StringVar(value=orders_url)
         # Refresh every minute by default instead of 5 minutes
         self.refresh_interval_var = ctk.IntVar(value=1)
-        self.auto_refresh_job = None
-        self.refresh_timer_job = None
-        self.next_refresh_time = None
+        self.auto_refresh_job: Any = None
+        self.refresh_timer_job: Any = None
+        self.next_refresh_time: Optional[datetime] = None
         self.refresh_timer_var = ctk.StringVar(value="")
         # export configuration
         export_path = self.config.get("export_path", os.getcwd())
@@ -105,14 +129,14 @@ class OrderScraperApp:
         self.range_end_var = ctk.StringVar()
         self.range_total_jobs_var = ctk.StringVar(value="0")
         self.range_total_hours_var = ctk.StringVar(value="0.00")
-        self.date_range_rows = []
-        self.filtered_date_range_rows = []
-        self.raw_date_range_rows = []
-        self.filtered_raw_date_range_rows = []
+        self.date_range_rows: list[dict[str, Any]] = []
+        self.filtered_date_range_rows: list[dict[str, Any]] = []
+        self.raw_date_range_rows: list[dict[str, Any]] = []
+        self.filtered_raw_date_range_rows: list[dict[str, Any]] = []
         self.date_range_filter_var = ctk.StringVar()
         # Track orders currently listed on the print-file queue page so we can
         # detect when they disappear.
-        self.queue_orders = set()
+        self.queue_orders: set[str] = set()
 
         # Tabs
         self.tab_control = ctk.CTkTabview(root)
@@ -125,6 +149,8 @@ class OrderScraperApp:
 
         self.refresh_timer_label = ctk.CTkLabel(root, textvariable=self.refresh_timer_var)
         self.refresh_timer_label.place(relx=1.0, rely=1.0, anchor="se", padx=10, pady=5)
+
+        self.analytics_window: Any = None
 
         # Settings Tab
         ctk.CTkLabel(self.settings_tab, text="Refresh interval (min):").grid(row=0, column=0, padx=5, pady=5)
@@ -336,7 +362,7 @@ class OrderScraperApp:
                 col,
                 text=head,
                 anchor="center",
-                command=lambda c=col: self.sort_date_range_table(c),
+                command=lambda c=col: self.sort_date_range_table(c),  # type: ignore[call-overload]
             )
             self.date_tree.column(col, anchor="center")
         self.date_tree.pack(side="left", expand=1, fill="both")
@@ -376,7 +402,7 @@ class OrderScraperApp:
         except Exception:
             pass
 
-    def login(self, silent=False):
+    def login(self, silent: bool = False) -> None:
         username = self.username_var.get()
         password = self.password_var.get()
         login_url = self.login_url_var.get() or LOGIN_URL
@@ -427,7 +453,7 @@ class OrderScraperApp:
         if self.logged_in:
             self.get_orders()
 
-    def get_orders(self):
+    def get_orders(self) -> None:
         if not self.logged_in:
             messagebox.showerror("Error", "Not logged in!")
             return
@@ -461,21 +487,20 @@ class OrderScraperApp:
         if not hasattr(self, "root") or not self.root:
             thread.join()
 
-    def _process_orders_html(self, html):
+    def _process_orders_html(self, html: str) -> None:
         orders = parse_orders(html)
         self.orders_tree.delete(*self.orders_tree.get_children())
         self.order_rows = []
         for order in orders:
-            self.log_order(
-                order.number,
-                order.company,
-                [(step.name, step.timestamp) for step in order.steps],
-            )
-            row = (order.number, order.company, order.status, order.priority)
+            steps = [JobStep(step.name, step.timestamp) for step in order.steps]
+            self.log_order(order.number, order.company, steps)
+            row = OrderRow(order.number, order.company, order.status, order.priority)
             self.order_rows.append(row)
-            self.orders_tree.insert('', 'end', values=row)
+            self.orders_tree.insert(
+                '', 'end', values=(row.number, row.company, row.status, row.priority)
+            )
 
-    def _process_queue_html(self, html):
+    def _process_queue_html(self, html: str) -> None:
         """Parse the print-file queue page and record when jobs disappear."""
         try:
             current = parse_queue(html)
@@ -487,22 +512,31 @@ class OrderScraperApp:
             self.record_print_file_start(order)
         self.queue_orders = current
 
-    def record_print_file_start(self, order_number):
+    def record_print_file_start(self, order_number: str) -> None:
         db.record_print_file_start(self.db, self.db_lock, order_number)
 
-    def log_order(self, order_number, company, steps):
-        db.log_order(self.db, self.db_lock, order_number, company, steps)
+    def log_order(self, order_number: str, company: str, steps: list[JobStep]) -> None:
+        db_steps = [(s.name, s.timestamp) for s in steps]
+        db.log_order(self.db, self.db_lock, order_number, company, db_steps)
 
-    def load_steps(self, order_number):
-        return db.load_steps(self.db, self.db_lock, order_number)
+    def load_steps(self, order_number: str) -> list[JobStep]:
+        raw = db.load_steps(self.db, self.db_lock, order_number)
+        return [JobStep(name, ts) for name, ts in raw]
 
-    def load_lead_times(self, order_number, start_date=None, end_date=None):
+    def load_lead_times(
+        self,
+        order_number: str,
+        start_date: Optional[datetime] = None,
+        end_date: Optional[datetime] = None,
+    ) -> list[dict[str, Any]]:
         """Load precomputed lead times optionally filtered by date range."""
-        return db.load_lead_times(self.db, self.db_lock, order_number, start_date, end_date)
+        return db.load_lead_times(
+            self.db, self.db_lock, order_number, start_date, end_date
+        )
 
-    def open_analytics_window(self):
+    def open_analytics_window(self) -> None:
         """Create a pop-out window for analytics charts."""
-        if hasattr(self, "analytics_window") and self.analytics_window.winfo_exists():
+        if self.analytics_window and self.analytics_window.winfo_exists():
             self.analytics_window.focus()
             return
         self.analytics_window = ctk.CTkToplevel(self.root)
@@ -530,7 +564,7 @@ class OrderScraperApp:
         self.analytics_canvas.get_tk_widget().pack(expand=1, fill="both")
         self.update_analytics_chart()
 
-    def update_analytics_chart(self):
+    def update_analytics_chart(self) -> None:
         """Compute lead times for visible orders and update the bar chart."""
         start = None
         end = None
@@ -547,13 +581,13 @@ class OrderScraperApp:
                 messagebox.showerror("Date", "Invalid end date format")
                 return
         job_filter = self.analytics_job_var.get().strip()
-        jobs = {}
+        jobs: dict[str, list[tuple[str, Optional[datetime]]]] = {}
         for row in self.order_rows:
-            order_number = str(row[0]) if isinstance(row, tuple) else str(row)
+            order_number = row.number
             if job_filter and job_filter not in order_number:
                 continue
             steps = self.load_steps(order_number)
-            jobs[order_number] = steps
+            jobs[order_number] = [(s.name, s.timestamp) for s in steps]
         results = compute_lead_times(jobs, start, end)
         self.analytics_ax.clear()
         totals = []
@@ -570,7 +604,7 @@ class OrderScraperApp:
             self.analytics_ax.set_xlabel("Job")
         self.analytics_canvas.draw()
 
-    def apply_preset(self, preset: str):
+    def apply_preset(self, preset: str) -> tuple[Optional[datetime], Optional[datetime]]:
         now = datetime.now()
         if preset == "today":
             s = e = now
@@ -597,7 +631,7 @@ class OrderScraperApp:
         self.end_date_var.set(e.strftime("%Y-%m-%d"))
         return s, e
 
-    def update_preset(self, label: str):
+    def update_preset(self, label: str) -> None:
         preset = self.preset_labels[label]
         if preset == "custom":
             self.start_entry.configure(state="normal")
@@ -608,7 +642,7 @@ class OrderScraperApp:
             self.apply_preset(preset)
         self.save_current_range()
 
-    def save_current_range(self, event=None):
+    def save_current_range(self, event: Any | None = None) -> None:
         label = self.preset_var.get()
         preset = self.preset_labels[label]
         self.config["last_range"] = {
@@ -618,12 +652,14 @@ class OrderScraperApp:
         }
         self.save_config()
 
-    def get_date_range(self, start_var=None, end_var=None):
+    def get_date_range(
+        self, start_var: Any | None = None, end_var: Any | None = None
+    ) -> tuple[Optional[datetime], Optional[datetime]]:
         """Return (start, end) datetimes from the entry fields or None."""
         start_var = start_var or self.start_date_var
         end_var = end_var or self.end_date_var
-        start = None
-        end = None
+        start: Optional[datetime] = None
+        end: Optional[datetime] = None
         if start_var.get().strip():
             try:
                 start = datetime.strptime(start_var.get().strip(), "%Y-%m-%d")
@@ -639,7 +675,7 @@ class OrderScraperApp:
             return None, None
         return start, end
 
-    def show_report(self, event=None):
+    def show_report(self, event: Any | None = None) -> None:
         selected = self.orders_tree.focus()
         if not selected:
             return
@@ -648,7 +684,10 @@ class OrderScraperApp:
         steps = self.load_steps(order_number)
         rows = self.load_lead_times(order_number, start, end)
         if not rows:
-            rows = compute_lead_times({order_number: steps}, start, end).get(order_number, [])
+            tuple_steps = [(s.name, s.timestamp) for s in steps]
+            rows = compute_lead_times({order_number: tuple_steps}, start, end).get(
+                order_number, []
+            )
             # store for future
             with self.db_lock:
                 cur = self.db.cursor()
@@ -667,14 +706,16 @@ class OrderScraperApp:
         row_map = {r["workstation"]: r for r in rows}
         self.report_tree.delete(*self.report_tree.get_children())
         total = 0.0
-        for idx, (name, ts) in enumerate(steps):
+        for idx, step in enumerate(steps):
+            name = step.name
+            ts = step.timestamp
             row = row_map.get(name)
             if row:
                 start_ts = row["start"]
                 end_ts = row["end"]
                 hours = row["hours"]
             else:
-                start_ts = steps[idx - 1][1] if idx > 0 else None
+                start_ts = steps[idx - 1].timestamp if idx > 0 else None
                 end_ts = ts
                 hours = None
                 if start_ts and end_ts:
@@ -694,17 +735,19 @@ class OrderScraperApp:
                 total += hours
         self.report_tree.insert("", "end", values=("TOTAL", "", "", f"{total:.2f}"))
 
-    def export_selected(self):
+    def export_selected(self) -> None:
         self.export_report()
 
-    def search_orders(self):
+    def search_orders(self) -> None:
         term = self.search_var.get().lower()
         self.orders_tree.delete(*self.orders_tree.get_children())
         for row in self.order_rows:
-            if not term or term in row[0].lower():
-                self.orders_tree.insert('', 'end', values=row)
+            if not term or term in row.number.lower():
+                self.orders_tree.insert(
+                    '', 'end', values=(row.number, row.company, row.status, row.priority)
+                )
 
-    def export_report(self, event=None):
+    def export_report(self, event: Any | None = None) -> None:
         selected = self.orders_tree.focus()
         if not selected:
             return
@@ -713,7 +756,10 @@ class OrderScraperApp:
         rows = self.load_lead_times(order_number, start, end)
         if not rows:
             steps = self.load_steps(order_number)
-            rows = compute_lead_times({order_number: steps}, start, end).get(order_number, [])
+            tuple_steps = [(s.name, s.timestamp) for s in steps]
+            rows = compute_lead_times({order_number: tuple_steps}, start, end).get(
+                order_number, []
+            )
         results = {order_number: rows}
         safe_order = re.sub(r'[^A-Za-z0-9_-]', '', order_number)
         suffix = ""
@@ -725,7 +771,7 @@ class OrderScraperApp:
         write_report(results, path)
         messagebox.showinfo("Export", f"Report written to {path}")
 
-    def export_date_range(self):
+    def export_date_range(self) -> None:
         """Export a report for all jobs within the provided date range."""
         start, end = self.get_date_range()
         if not start and not end:
@@ -743,12 +789,13 @@ class OrderScraperApp:
                 params.append(end.isoformat(sep=" "))
             cur.execute(query, params)
             orders = [r[0] for r in cur.fetchall()]
-        results = {}
+        results: dict[str, list[dict[str, Any]]] = {}
         for order in orders:
             rows = self.load_lead_times(order, start, end)
             if not rows:
                 steps = self.load_steps(order)
-                rows = compute_lead_times({order: steps}, start, end).get(order, [])
+                tuple_steps = [(s.name, s.timestamp) for s in steps]
+                rows = compute_lead_times({order: tuple_steps}, start, end).get(order, [])
             if rows:
                 results[order] = rows
         if not results:
@@ -762,14 +809,17 @@ class OrderScraperApp:
         write_report(results, path)
         messagebox.showinfo("Export", f"Report written to {path}")
 
-    def export_realtime_report(self):
+    def export_realtime_report(self) -> None:
         """Export a realtime lead time report for the selected date range."""
         start, end = self.get_date_range()
         with self.db_lock:
             cur = self.db.cursor()
             cur.execute("SELECT DISTINCT order_number FROM steps")
             orders = [r[0] for r in cur.fetchall()]
-        jobs = {order: self.load_steps(order) for order in orders}
+        jobs = {
+            order: [(s.name, s.timestamp) for s in self.load_steps(order)]
+            for order in orders
+        }
         report = generate_realtime_report(jobs, start, end)
         if not report:
             messagebox.showinfo("Export", "No data for range")
@@ -786,7 +836,7 @@ class OrderScraperApp:
             "Export", f"Realtime report written to {csv_path} and {html_path}"
         )
 
-    def schedule_auto_refresh(self):
+    def schedule_auto_refresh(self) -> None:
         if not self.logged_in:
             self.next_refresh_time = None
             self.refresh_timer_var.set("")
@@ -816,13 +866,13 @@ class OrderScraperApp:
         self.update_refresh_timer()
         self.auto_refresh_job = self.root.after(interval_ms, self.auto_refresh)
 
-    def auto_refresh(self):
+    def auto_refresh(self) -> None:
         if self.logged_in:
             self.refresh_timer_var.set("Refreshing...")
             self.get_orders()
         self.schedule_auto_refresh()
 
-    def update_refresh_timer(self):
+    def update_refresh_timer(self) -> None:
         if self.next_refresh_time is None:
             return
         remaining = self.next_refresh_time - datetime.now()
@@ -835,7 +885,7 @@ class OrderScraperApp:
             )
             self.refresh_timer_job = self.root.after(1000, self.update_refresh_timer)
 
-    def schedule_daily_export(self):
+    def schedule_daily_export(self) -> None:
         """Schedule the daily export based on configured time."""
         t_str = self.export_time_var.get().strip()
         if not t_str:
@@ -856,17 +906,17 @@ class OrderScraperApp:
                 pass
         self.export_job = self.root.after(delay_ms, self._run_scheduled_export)
 
-    def _run_scheduled_export(self):
+    def _run_scheduled_export(self) -> None:
         self.export_date_range()
         self.schedule_daily_export()
 
-    def load_config(self):
+    def load_config(self) -> dict[str, Any]:
         return load_config_file()
 
-    def save_config(self):
+    def save_config(self) -> None:
         save_config_file(self.config)
 
-    def update_business_hours(self):
+    def update_business_hours(self) -> None:
         try:
             start = datetime.strptime(self.business_start_var.get().strip(), "%H:%M").time()
             end = datetime.strptime(self.business_end_var.get().strip(), "%H:%M").time()
@@ -883,7 +933,7 @@ class OrderScraperApp:
         self.save_config()
         messagebox.showinfo("Business Hours", "Business hours updated")
 
-    def update_export_settings(self):
+    def update_export_settings(self) -> None:
         path = self.export_path_var.get().strip() or os.getcwd()
         t_str = self.export_time_var.get().strip()
         try:
@@ -897,7 +947,7 @@ class OrderScraperApp:
         messagebox.showinfo("Export Settings", "Export settings updated")
         self.schedule_daily_export()
 
-    def browse_export_path(self):
+    def browse_export_path(self) -> None:
         path = filedialog.askdirectory(initialdir=self.last_export_dir)
         if path:
             self.export_path_var.set(path)
@@ -914,11 +964,13 @@ class OrderScraperApp:
             return val
 
     # Date Range Report helpers
-    def load_jobs_by_date_range(self, start, end):
+    def load_jobs_by_date_range(
+        self, start: Optional[datetime], end: Optional[datetime]
+    ) -> list[dict[str, Any]]:
         """Fetch jobs within start/end dates from the database."""
         return db.load_jobs_by_date_range(self.db, self.db_lock, start, end)
 
-    def populate_date_range_table(self, rows):
+    def populate_date_range_table(self, rows: list[dict[str, Any]]) -> None:
         self.date_tree.delete(*self.date_tree.get_children())
         # Highlight orders that are still in progress
         self.date_tree.tag_configure("inprogress", background="#fff0e6")
@@ -965,7 +1017,7 @@ class OrderScraperApp:
             tags=("total",),
         )
 
-    def toggle_order_row(self, event):
+    def toggle_order_row(self, event: Any) -> None:
         item = self.date_tree.identify_row(event.y)
         if not item:
             return
@@ -982,13 +1034,13 @@ class OrderScraperApp:
         for child in self.date_tree.get_children():
             recurse(child)
 
-    def expand_all_date_rows(self):
+    def expand_all_date_rows(self) -> None:
         self._set_all_date_rows_open(True)
 
-    def collapse_all_date_rows(self):
+    def collapse_all_date_rows(self) -> None:
         self._set_all_date_rows_open(False)
 
-    def toggle_date_rows(self):
+    def toggle_date_rows(self) -> None:
         if self.date_rows_expanded:
             self.collapse_all_date_rows()
             self.expand_collapse_btn.configure(text="Expand All")
@@ -997,22 +1049,22 @@ class OrderScraperApp:
             self.expand_collapse_btn.configure(text="Collapse All")
         self.date_rows_expanded = not self.date_rows_expanded
 
-    def update_date_range_summary(self, rows):
+    def update_date_range_summary(self, rows: list[dict[str, Any]]) -> None:
         total_jobs = len({r["order"] for r in rows})
         total_hours = sum(r["hours"] for r in rows)
         self.range_total_jobs_var.set(str(total_jobs))
         self.range_total_hours_var.set(f"{total_hours:.2f}")
 
-    def run_date_range_report(self):
+    def run_date_range_report(self) -> None:
         start, end = self.get_date_range(self.range_start_var, self.range_end_var)
         if not start or not end:
             messagebox.showerror("Date Range Report", "Start and end dates are required")
             return
         rows = self.load_jobs_by_date_range(start, end)
         raw_rows = list(rows)
-        grouped = {}
+        grouped: dict[str, dict[str, Any]] = {}
         for r in rows:
-            order = r.get("order")
+            order = str(r.get("order"))
             g = grouped.setdefault(
                 order,
                 {
@@ -1039,10 +1091,12 @@ class OrderScraperApp:
         # Include missing steps for each order and ensure workstation order
         for order, g in grouped.items():
             steps = self.load_steps(order)
-            step_order = {name.lower(): idx for idx, (name, _) in enumerate(steps)}
+            step_order = {s.name.lower(): idx for idx, s in enumerate(steps)}
             existing = {ws["workstation"].lower() for ws in g["workstations"]}
-            prev_ts = None
-            for step_name, ts in steps:
+            prev_ts: Optional[datetime] = None
+            for step in steps:
+                step_name = step.name
+                ts = step.timestamp
                 step_lower = step_name.lower()
                 end_str = ts.strftime("%Y-%m-%d %H:%M") if ts else ""
                 if step_lower not in existing:
@@ -1091,7 +1145,7 @@ class OrderScraperApp:
         self.populate_date_range_table(grouped_rows)
         self.update_date_range_summary(self.filtered_raw_date_range_rows)
 
-    def export_date_range_csv(self):
+    def export_date_range_csv(self) -> None:
         """Export the date range report to a CSV file."""
         if not self.date_range_rows:
             messagebox.showerror("Date Range Report", "Run report before exporting")
@@ -1135,7 +1189,7 @@ class OrderScraperApp:
                     ])
         messagebox.showinfo("Date Range Report", f"Report written to {path}")
 
-    def filter_date_range_rows(self):
+    def filter_date_range_rows(self) -> None:
         term = self.date_range_filter_var.get().lower().strip()
         if not term:
             rows = self.date_range_rows
@@ -1158,7 +1212,7 @@ class OrderScraperApp:
         self.populate_date_range_table(rows)
         self.update_date_range_summary(raw_rows)
 
-    def sort_date_range_table(self, column, reverse=False):
+    def sort_date_range_table(self, column: str, reverse: bool = False) -> None:
         key_funcs = {
             "order": lambda r: r["order"],
             "company": lambda r: r["company"],
@@ -1178,7 +1232,7 @@ class OrderScraperApp:
                 column, command=lambda: self.sort_date_range_table(column, not reverse)
             )
 
-    def clear_date_range_report(self):
+    def clear_date_range_report(self) -> None:
         self.range_start_var.set("")
         self.range_end_var.set("")
         self.date_range_rows = []
@@ -1189,7 +1243,7 @@ class OrderScraperApp:
         self.date_tree.delete(*self.date_tree.get_children())
         self.update_date_range_summary([])
 
-    def show_breakdown(self):
+    def show_breakdown(self) -> None:
         selected = self.orders_tree.focus()
         if not selected:
             messagebox.showerror("Breakdown", "No order selected")
@@ -1197,8 +1251,11 @@ class OrderScraperApp:
         order_number = self.orders_tree.item(selected, "values")[0]
         start, end = self.get_date_range()
         steps = self.load_steps(order_number)
-        lines = []
-        for (name, s), (next_name, e) in zip(steps, steps[1:]):
+        lines: list[str] = []
+        for current, next_step in zip(steps, steps[1:]):
+            s = current.timestamp
+            e = next_step.timestamp
+            next_name = next_step.name
             if not s or not e:
                 continue
             segments = business_hours_breakdown(s, e)
@@ -1209,7 +1266,7 @@ class OrderScraperApp:
                     lines.append(f"  {seg_start} -> {seg_end} ({hours:.2f}h)")
         messagebox.showinfo("Breakdown", "\n".join(lines) if lines else "No breakdown data")
 
-    def browse_db(self):
+    def browse_db(self) -> None:
         path = filedialog.askopenfilename(
             filetypes=[("SQLite DB", "*.db"), ("All Files", "*")],
             initialdir=self.last_db_dir,
@@ -1217,7 +1274,7 @@ class OrderScraperApp:
         if path:
             self.connect_db(path)
 
-    def connect_db(self, path):
+    def connect_db(self, path: str) -> None:
         if hasattr(self, "db") and self.db:
             try:
                 self.db.close()
@@ -1229,7 +1286,7 @@ class OrderScraperApp:
         self.save_config()
         self.db, self.db_lock = db.connect_db(path)
 
-    def relogin_loop(self):
+    def relogin_loop(self) -> None:
         while True:
             time.sleep(2*60*60)  # 2 hours
             if self.logged_in:
