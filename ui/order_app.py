@@ -225,11 +225,17 @@ class OrderScraperApp:
         self.date_tree.configure(yscrollcommand=scroll.set)
         scroll.pack(side="right", fill="y")
 
-        self.date_tree.tag_configure("even", background="#ffffff")
-        self.date_tree.tag_configure("odd", background="#f0f0ff")
-        self.date_tree.tag_configure("total", background="#e0e0e0", font=("Arial", 10, "bold"))
+        self.date_tree.tag_configure("even", background="#f9f9f9")
+        self.date_tree.tag_configure("odd", background="#ececec")
+        self.date_tree.tag_configure(
+            "total", background="#e0e0e0", font=("Arial", 10, "bold")
+        )
         self.date_tree.tag_configure("inprogress", background="#fff0e6")
+        self.date_tree.tag_configure("focus", background="#d0e0ff")
+        self.hovered_item: Optional[str] = None
         self.date_tree.bind("<Double-1>", self.toggle_order_row)
+        self.date_tree.bind("<Motion>", self.on_tree_hover)
+        self.date_tree.bind("<Leave>", self.on_tree_leave)
 
         summary = ctk.CTkFrame(self.date_range_tab)
         summary.grid(row=3, column=0, columnspan=7, sticky="ew", padx=10, pady=5)
@@ -463,6 +469,26 @@ class OrderScraperApp:
         if self.date_tree.get_children(item):
             is_open = self.date_tree.item(item, "open")
             self.date_tree.item(item, open=not is_open)
+
+    def on_tree_hover(self, event: Any) -> None:
+        item = self.date_tree.identify_row(event.y)
+        if item != self.hovered_item:
+            if self.hovered_item:
+                tags = set(self.date_tree.item(self.hovered_item, "tags"))
+                tags.discard("focus")
+                self.date_tree.item(self.hovered_item, tags=tuple(tags))
+            if item:
+                tags = set(self.date_tree.item(item, "tags"))
+                tags.add("focus")
+                self.date_tree.item(item, tags=tuple(tags))
+            self.hovered_item = item
+
+    def on_tree_leave(self, event: Any) -> None:
+        if self.hovered_item:
+            tags = set(self.date_tree.item(self.hovered_item, "tags"))
+            tags.discard("focus")
+            self.date_tree.item(self.hovered_item, tags=tuple(tags))
+            self.hovered_item = None
 
     def _set_all_date_rows_open(self, open_state):
         def recurse(item):
