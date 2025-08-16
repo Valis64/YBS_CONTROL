@@ -3,6 +3,10 @@ from tkinter import messagebox
 import requests
 import os
 
+# Configure dark appearance and theme before creating any widgets
+ctk.set_appearance_mode("dark")
+ctk.set_default_color_theme("dark-blue")
+
 from config.endpoints import LOGIN_URL, ORDERS_URL
 
 

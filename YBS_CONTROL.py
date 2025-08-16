@@ -1,5 +1,9 @@
 import customtkinter as ctk
 
+# Configure dark appearance and theme before creating any widgets
+ctk.set_appearance_mode("dark")
+ctk.set_default_color_theme("dark-blue")
+
 from ui.order_app import OrderScraperApp
 from config.endpoints import LOGIN_URL
 
