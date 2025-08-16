@@ -9,7 +9,7 @@ from datetime import datetime, timedelta
 import csv
 import logging
 from dataclasses import dataclass
-from typing import Any, Optional
+from typing import Any, Optional, Callable
 from tkcalendar import DateEntry
 
 from config.settings import load_config as load_config_file, save_config as save_config_file
@@ -106,6 +106,10 @@ class OrderScraperApp:
             root, textvariable=self.refresh_seconds_var
         )
         self.refresh_label.place(relx=1.0, rely=1.0, anchor="se", x=-10, y=-10)
+
+        self.status_var = ctk.StringVar(value="")
+        self.status_label = ctk.CTkLabel(root, textvariable=self.status_var)
+        self.status_label.place(relx=0.0, rely=1.0, anchor="sw", x=10, y=-10)
 
         self.scrape_interval = 60
         self.scrape_job: Optional[str] = None
@@ -426,37 +430,63 @@ class OrderScraperApp:
         if not start and not end:
             messagebox.showerror("Export", "Enter a start or end date")
             return
-        with self.db_lock:
-            cur = self.db.cursor()
-            query = "SELECT DISTINCT order_number FROM lead_times WHERE 1=1"
-            params = []
-            if start:
-                query += " AND start >= ?"
-                params.append(start.isoformat(sep=" "))
-            if end:
-                query += " AND end <= ?"
-                params.append(end.isoformat(sep=" "))
-            cur.execute(query, params)
-            orders = [r[0] for r in cur.fetchall()]
-        results: dict[str, list[dict[str, Any]]] = {}
-        for order in orders:
-            rows = self.load_lead_times(order, start, end)
-            if not rows:
-                steps = self.load_steps(order)
-                tuple_steps = [(s.name, s.timestamp) for s in steps]
-                rows = compute_lead_times({order: tuple_steps}, start, end).get(order, [])
-            if rows:
-                results[order] = rows
-        if not results:
-            messagebox.showinfo("Export", "No data for range")
-            return
-        s = start.strftime("%Y%m%d") if start else "begin"
-        e = end.strftime("%Y%m%d") if end else "now"
-        export_dir = self.export_path_var.get().strip() or os.getcwd()
-        os.makedirs(export_dir, exist_ok=True)
-        path = os.path.join(export_dir, f"lead_time_{s}_{e}.csv")
-        write_report(results, path)
-        messagebox.showinfo("Export", f"Report written to {path}")
+
+        self.set_status("Exporting...")
+
+        def worker(start: Optional[datetime], end: Optional[datetime]) -> None:
+            try:
+                with self.db_lock:
+                    cur = self.db.cursor()
+                    query = "SELECT DISTINCT order_number FROM lead_times WHERE 1=1"
+                    params = []
+                    if start:
+                        query += " AND start >= ?"
+                        params.append(start.isoformat(sep=" "))
+                    if end:
+                        query += " AND end <= ?"
+                        params.append(end.isoformat(sep=" "))
+                    cur.execute(query, params)
+                    orders = [r[0] for r in cur.fetchall()]
+
+                results: dict[str, list[dict[str, Any]]] = {}
+                for order in orders:
+                    rows = self.load_lead_times(order, start, end)
+                    if not rows:
+                        steps = self.load_steps(order)
+                        tuple_steps = [(s.name, s.timestamp) for s in steps]
+                        rows = compute_lead_times({order: tuple_steps}, start, end).get(order, [])
+                    if rows:
+                        results[order] = rows
+                if not results:
+                    def notify_no_data() -> None:
+                        self.set_status("")
+                        messagebox.showinfo("Export", "No data for range")
+
+                    self._call_async(notify_no_data)
+                    return
+                s = start.strftime("%Y%m%d") if start else "begin"
+                e = end.strftime("%Y%m%d") if end else "now"
+                export_dir = self.export_path_var.get().strip() or os.getcwd()
+                os.makedirs(export_dir, exist_ok=True)
+                path = os.path.join(export_dir, f"lead_time_{s}_{e}.csv")
+                write_report(results, path)
+                def notify_success() -> None:
+                    self.set_status("Export complete")
+                    messagebox.showinfo("Export", f"Report written to {path}")
+
+                self._call_async(notify_success)
+            except Exception as exc:
+                logger.exception("Error exporting date range")
+
+                def notify_error() -> None:
+                    self.set_status("Export failed")
+                    messagebox.showerror("Export", str(exc))
+
+                self._call_async(notify_error)
+        if hasattr(self, "root") and hasattr(self.root, "after"):
+            threading.Thread(target=worker, args=(start, end), daemon=True).start()
+        else:
+            worker(start, end)
 
     def schedule_daily_export(self) -> None:
         """Schedule the daily export based on configured time."""
@@ -527,6 +557,23 @@ class OrderScraperApp:
             self.last_export_dir = path
             self.config["export_path"] = path
             self.save_config()
+
+    def set_status(self, message: str) -> None:
+        if not hasattr(self, "root") or not hasattr(self, "status_var"):
+            return
+        try:
+            self.root.after(0, lambda: self.status_var.set(message))
+        except Exception:
+            pass
+
+    def _call_async(self, func: Callable[[], None]) -> None:
+        if hasattr(self, "root") and hasattr(self.root, "after"):
+            try:
+                self.root.after(0, func)
+            except Exception:
+                func()
+        else:
+            func()
 
 
     @staticmethod
@@ -651,92 +698,122 @@ class OrderScraperApp:
     def run_date_range_report(self) -> None:
         start, end = self.get_date_range(self.range_start_var, self.range_end_var)
         if not start or not end:
-            messagebox.showerror("Date Range Report", "Start and end dates are required")
+            messagebox.showerror(
+                "Date Range Report", "Start and end dates are required"
+            )
             return
-        rows = self.load_jobs_by_date_range(start, end)
-        raw_rows = list(rows)
-        grouped: dict[str, dict[str, Any]] = {}
-        for r in rows:
-            order = str(r.get("order"))
-            g = grouped.setdefault(
-                order,
-                {
-                    "order": order,
-                    "company": r.get("company", ""),
-                    "hours": 0.0,
-                    "workstations": [],
-                    "status": "Completed",
-                },
-            )
-            g["hours"] += r.get("hours") or 0.0
-            end_time = r.get("end", "")
-            g["workstations"].append(
-                {
-                    "workstation": r.get("workstation", ""),
-                    "hours": r.get("hours") or 0.0,
-                    "start": r.get("start", ""),
-                    "end": end_time,
-                }
-            )
-            if not end_time:
-                g["status"] = "In Progress"
 
-        # Include missing steps for each order and ensure workstation order
-        for order, g in grouped.items():
-            steps = self.load_steps(order)
-            step_order = {s.name.lower(): idx for idx, s in enumerate(steps)}
-            existing = {ws["workstation"].lower() for ws in g["workstations"]}
-            prev_ts: Optional[datetime] = None
-            for step in steps:
-                step_name = step.name
-                ts = step.timestamp
-                step_lower = step_name.lower()
-                end_str = ts.strftime("%Y-%m-%d %H:%M") if ts else ""
-                if step_lower not in existing:
-                    start_str = prev_ts.strftime("%Y-%m-%d %H:%M") if prev_ts else ""
-                    delta = (
-                        business_hours_delta(prev_ts, ts)
-                        if prev_ts and ts
-                        else timedelta(0)
-                    )
-                    hours = delta.total_seconds() / 3600
-                    g["workstations"].append(
-                        {
-                            "workstation": step_name,
-                            "hours": hours,
-                            "start": start_str,
-                            "end": end_str,
-                        }
-                    )
-                    g["hours"] += hours
-                    status = "Completed" if end_str else "In Progress"
-                    raw_rows.append(
+        self.set_status("Running report...")
+
+        def worker(start: datetime, end: datetime) -> None:
+            try:
+                rows = self.load_jobs_by_date_range(start, end)
+                raw_rows = list(rows)
+                grouped: dict[str, dict[str, Any]] = {}
+                for r in rows:
+                    order = str(r.get("order"))
+                    g = grouped.setdefault(
+                        order,
                         {
                             "order": order,
-                            "company": g.get("company", ""),
-                            "workstation": step_name,
-                            "hours": hours,
-                            "start": start_str,
-                            "end": end_str,
-                            "status": status,
+                            "company": r.get("company", ""),
+                            "hours": 0.0,
+                            "workstations": [],
+                            "status": "Completed",
+                        },
+                    )
+                    g["hours"] += r.get("hours") or 0.0
+                    end_time = r.get("end", "")
+                    g["workstations"].append(
+                        {
+                            "workstation": r.get("workstation", ""),
+                            "hours": r.get("hours") or 0.0,
+                            "start": r.get("start", ""),
+                            "end": end_time,
                         }
                     )
-                    existing.add(step_lower)
-                if not end_str:
-                    g["status"] = "In Progress"
-                prev_ts = ts
+                    if not end_time:
+                        g["status"] = "In Progress"
 
-            g["workstations"].sort(
-                key=lambda ws: step_order.get(ws["workstation"].lower(), len(step_order))
-            )
+                # Include missing steps for each order and ensure workstation order
+                for order, g in grouped.items():
+                    steps = self.load_steps(order)
+                    step_order = {s.name.lower(): idx for idx, s in enumerate(steps)}
+                    existing = {ws["workstation"].lower() for ws in g["workstations"]}
+                    prev_ts: Optional[datetime] = None
+                    for step in steps:
+                        step_name = step.name
+                        ts = step.timestamp
+                        step_lower = step_name.lower()
+                        end_str = ts.strftime("%Y-%m-%d %H:%M") if ts else ""
+                        if step_lower not in existing:
+                            start_str = (
+                                prev_ts.strftime("%Y-%m-%d %H:%M") if prev_ts else ""
+                            )
+                            delta = (
+                                business_hours_delta(prev_ts, ts)
+                                if prev_ts and ts
+                                else timedelta(0)
+                            )
+                            hours = delta.total_seconds() / 3600
+                            g["workstations"].append(
+                                {
+                                    "workstation": step_name,
+                                    "hours": hours,
+                                    "start": start_str,
+                                    "end": end_str,
+                                }
+                            )
+                            g["hours"] += hours
+                            status = "Completed" if end_str else "In Progress"
+                            raw_rows.append(
+                                {
+                                    "order": order,
+                                    "company": g.get("company", ""),
+                                    "workstation": step_name,
+                                    "hours": hours,
+                                    "start": start_str,
+                                    "end": end_str,
+                                    "status": status,
+                                }
+                            )
+                            existing.add(step_lower)
+                        if not end_str:
+                            g["status"] = "In Progress"
+                        prev_ts = ts
 
-        grouped_rows = list(grouped.values())
-        self.raw_date_range_rows = raw_rows
-        self.date_range_rows = grouped_rows
-        self.filtered_date_range_rows = list(grouped_rows)
-        self.filtered_raw_date_range_rows = list(self.raw_date_range_rows)
-        self.populate_date_range_table(grouped_rows)
-        self.update_date_range_summary(self.filtered_raw_date_range_rows)
+                    g["workstations"].sort(
+                        key=lambda ws: step_order.get(
+                            ws["workstation"].lower(), len(step_order)
+                        )
+                    )
+
+                grouped_rows = list(grouped.values())
+
+                def update_ui() -> None:
+                    self.raw_date_range_rows = raw_rows
+                    self.date_range_rows = grouped_rows
+                    self.filtered_date_range_rows = list(grouped_rows)
+                    self.filtered_raw_date_range_rows = list(self.raw_date_range_rows)
+                    self.populate_date_range_table(grouped_rows)
+                    self.update_date_range_summary(
+                        self.filtered_raw_date_range_rows
+                    )
+                    self.set_status("Report complete")
+
+                self._call_async(update_ui)
+            except Exception as exc:
+                logger.exception("Error running date range report")
+
+                def notify_error() -> None:
+                    self.set_status("Report failed")
+                    messagebox.showerror("Date Range Report", str(exc))
+
+                self._call_async(notify_error)
+        if hasattr(self, "root") and hasattr(self.root, "after"):
+            threading.Thread(target=worker, args=(start, end), daemon=True).start()
+        else:
+            worker(start, end)
 
     def export_date_range_csv(self) -> None:
         """Export the date range report to a CSV file."""
