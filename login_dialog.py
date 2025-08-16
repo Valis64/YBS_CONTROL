@@ -3,16 +3,12 @@ from tkinter import messagebox
 import requests
 import os
 
-# Configure dark appearance and theme before creating any widgets
-ctk.set_appearance_mode("dark")
-ctk.set_default_color_theme("dark-blue")
-
 from config.endpoints import LOGIN_URL, ORDERS_URL
 
 
-class LoginDialog(ctk.CTk):
-    def __init__(self):
-        super().__init__()
+class LoginDialog(ctk.CTkToplevel):
+    def __init__(self, parent):
+        super().__init__(parent)
         self.title("Login")
         self.session = requests.Session()
         self.authenticated = False
