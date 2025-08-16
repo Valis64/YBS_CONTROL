@@ -171,7 +171,10 @@ class OrderScraperApp:
 
         # Style to enlarge each row for better readability
         style = ttk.Style(self.root)
-        style.configure("DateTreeview", rowheight=28, padding=(0, 4))
+        # ``ttk`` style names require a component class suffix (e.g. ``Treeview``)
+        # so give the custom style a ``.Treeview`` suffix.  Without it, Tk raises
+        # ``Layout <style> not found`` when the style is referenced.
+        style.configure("Date.Treeview", rowheight=28, padding=(0, 4))
 
         columns = (
             "company",
@@ -182,7 +185,7 @@ class OrderScraperApp:
             "status",
         )
         self.date_tree = ttk.Treeview(
-            table_frame, columns=columns, show="tree headings", style="DateTreeview"
+            table_frame, columns=columns, show="tree headings", style="Date.Treeview"
         )
         self.date_tree.heading(
             "#0",
