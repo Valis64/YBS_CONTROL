@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import customtkinter as ctk
 from tkinter import ttk, messagebox, filedialog
+import tkinter as tk
 import threading
 import requests  # type: ignore[import-untyped]
 import os
@@ -263,14 +264,55 @@ class OrderScraperApp:
         # ``ttk`` style names require a component class suffix (e.g. ``Treeview``)
         # so give the custom style a ``.Treeview`` suffix.  Without it, Tk raises
         # ``Layout <style> not found`` when the style is referenced.
-        style.configure(
-            "Date.Treeview",
-            rowheight=28,
-            padding=(0, 4),
-            background="#1e1e1e",
-            fieldbackground="#1e1e1e",
-            foreground="#f0f0f0",
-        )
+        try:
+            style.configure(
+                "Date.Treeview",
+                rowheight=28,
+                padding=(0, 4),
+                background="#1e1e1e",
+                fieldbackground="#1e1e1e",
+                foreground="#f0f0f0",
+                rowseparatorcolor="#3a3a3a",
+                rowseparatorwidth=1,
+            )
+        except tk.TclError:
+            # Fallback for Tk versions without built-in row separator support.
+            style.configure(
+                "Date.Treeview",
+                rowheight=28,
+                padding=(0, 4),
+                background="#1e1e1e",
+                fieldbackground="#1e1e1e",
+                foreground="#f0f0f0",
+            )
+            # Draw a subtle 1px line at the bottom of each row by inserting a
+            # separator element into the item layout.
+            style.element_create(
+                "DateTreeview.rowborder", "from", "clam", "separator"
+            )
+            style.layout(
+                "Date.Treeview.Item",
+                [
+                    (
+                        "Treeitem.padding",
+                        {
+                            "sticky": "nswe",
+                            "children": [
+                                ("Treeitem.indicator", {"side": "left", "sticky": ""}),
+                                ("Treeitem.image", {"side": "left", "sticky": ""}),
+                                ("Treeitem.text", {"side": "left", "sticky": ""}),
+                                (
+                                    "DateTreeview.rowborder",
+                                    {"side": "bottom", "sticky": "we"},
+                                ),
+                            ],
+                        },
+                    )
+                ],
+            )
+            style.configure(
+                "DateTreeview.rowborder", background="#3a3a3a", borderwidth=0
+            )
         style.map(
             "Date.Treeview",
             background=[("selected", "#3a3d41")],
