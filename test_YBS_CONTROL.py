@@ -27,13 +27,12 @@ class LoginDialogTests(unittest.TestCase):
         self.dialog.session = MagicMock()
         self.dialog.username_var = SimpleVar("user")
         self.dialog.password_var = SimpleVar("pass")
-        self.dialog.login_url_var = SimpleVar("http://example.com/login")
-        self.dialog.orders_url_var = SimpleVar("http://example.com/orders")
 
     @patch("login_dialog.messagebox")
     def test_login_request_exception(self, mock_messagebox):
         self.dialog.session.post.side_effect = requests.Timeout("boom")
-        self.dialog.login()
+        with patch("login_dialog.LOGIN_URL", "http://example.com/login"):
+            self.dialog.login()
         self.dialog.session.post.assert_called_with(
             "http://example.com/login",
             data={"email": "user", "password": "pass", "action": "signin"},
