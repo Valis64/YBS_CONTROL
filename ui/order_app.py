@@ -148,7 +148,7 @@ class OrderScraperApp:
         self.tab_control.pack(expand=1, fill="both")
 
         self.refresh_timer_label = ctk.CTkLabel(root, textvariable=self.refresh_timer_var)
-        self.refresh_timer_label.place(relx=1.0, rely=1.0, anchor="se", padx=10, pady=5)
+        self.refresh_timer_label.place(relx=1.0, rely=1.0, anchor="se", x=-10, y=-5)
 
         self.analytics_window: Any = None
 
