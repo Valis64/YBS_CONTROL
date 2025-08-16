@@ -1,12 +1,12 @@
 import customtkinter as ctk
 
 from ui.order_app import OrderScraperApp
-from config.endpoints import LOGIN_URL, ORDERS_URL
+from config.endpoints import LOGIN_URL
 
 
 def main():
     root = ctk.CTk()
-    OrderScraperApp(root, login_url=LOGIN_URL, orders_url=ORDERS_URL)
+    OrderScraperApp(root, login_url=LOGIN_URL)
     root.mainloop()
 
 
