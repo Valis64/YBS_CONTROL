@@ -247,6 +247,18 @@ class OrderScraperApp:
         ctk.CTkLabel(summary, text="Total Hours:").grid(row=0, column=2, padx=5, pady=5)
         ctk.CTkLabel(summary, textvariable=self.range_total_hours_var).grid(row=0, column=3, padx=5, pady=5)
 
+        self.refresh_seconds_var = ctk.StringVar(value="")
+        self.refresh_label = ctk.CTkLabel(
+            root, textvariable=self.refresh_seconds_var
+        )
+        self.refresh_label.place(relx=1.0, rely=1.0, anchor="se", x=-10, y=-10)
+
+        self.scrape_interval = 60
+        self.scrape_job: Optional[str] = None
+        self.countdown_job: Optional[str] = None
+        self.next_scrape_time: Optional[datetime] = None
+        self.schedule_order_scrape()
+
         self.schedule_daily_export()
 
         # Ensure the window is sized to show all content
@@ -255,6 +267,47 @@ class OrderScraperApp:
             self.root.minsize(self.root.winfo_width(), self.root.winfo_height())
         except Exception:
             pass
+
+    def schedule_order_scrape(self, interval: Optional[int] = None) -> None:
+        if interval is not None:
+            self.scrape_interval = interval
+        if self.scrape_job is not None:
+            try:
+                self.root.after_cancel(self.scrape_job)
+            except Exception:
+                pass
+        if self.countdown_job is not None:
+            try:
+                self.root.after_cancel(self.countdown_job)
+            except Exception:
+                pass
+        self.next_scrape_time = datetime.now() + timedelta(seconds=self.scrape_interval)
+        self.scrape_job = self.root.after(
+            int(self.scrape_interval * 1000), self.refresh_orders
+        )
+        self._update_refresh_timer()
+
+    def _update_refresh_timer(self) -> None:
+        if not self.next_scrape_time:
+            return
+        remaining = int((self.next_scrape_time - datetime.now()).total_seconds())
+        if remaining < 0:
+            remaining = 0
+        self.refresh_seconds_var.set(f"Refresh in {remaining}s")
+        self.countdown_job = self.root.after(1000, self._update_refresh_timer)
+
+    def refresh_orders(self) -> None:
+        """Refresh the orders and reschedule the next scrape."""
+        # Placeholder for actual scraping logic
+        self.schedule_order_scrape()
+
+    def manual_refresh(self) -> None:
+        if self.scrape_job is not None:
+            try:
+                self.root.after_cancel(self.scrape_job)
+            except Exception:
+                pass
+        self.refresh_orders()
 
     def load_steps(self, order_number: str) -> list[JobStep]:
         raw = db.load_steps(self.db, self.db_lock, order_number)
