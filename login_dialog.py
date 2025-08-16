@@ -3,8 +3,11 @@ from tkinter import messagebox
 import requests
 import os
 
-LOGIN_URL = "https://www.ybsnow.com/index.php"
-ORDERS_URL = "https://www.ybsnow.com/manage.html"
+# Configure dark appearance and theme before creating any widgets
+ctk.set_appearance_mode("dark")
+ctk.set_default_color_theme("dark-blue")
+
+from config.endpoints import LOGIN_URL, ORDERS_URL
 
 
 class LoginDialog(ctk.CTk):
