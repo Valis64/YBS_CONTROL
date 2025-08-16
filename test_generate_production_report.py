@@ -41,7 +41,7 @@ def test_timezone_conversion_and_storage():
         events,
         "2024-01-01T00:00:00Z",
         "2024-01-02T00:00:00Z",
-        tz="US/Eastern",
+        tz="America/New_York",
     )
 
     assert report["details"][0]["start"].startswith("2024-01-01T00:00:00+00:00")
