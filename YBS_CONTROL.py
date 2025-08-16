@@ -5,12 +5,20 @@ ctk.set_appearance_mode("dark")
 ctk.set_default_color_theme("dark-blue")
 
 from ui.order_app import OrderScraperApp
-from config.endpoints import LOGIN_URL
+from login_dialog import LoginDialog
 
 
 def main():
+    dialog = LoginDialog()
+    dialog.mainloop()
+    if not dialog.authenticated:
+        return
     root = ctk.CTk()
-    OrderScraperApp(root, login_url=LOGIN_URL)
+    OrderScraperApp(
+        root,
+        session=dialog.session,
+        orders_url=dialog.orders_url_var.get(),
+    )
     root.mainloop()
 
 
