@@ -263,7 +263,19 @@ class OrderScraperApp:
         # ``ttk`` style names require a component class suffix (e.g. ``Treeview``)
         # so give the custom style a ``.Treeview`` suffix.  Without it, Tk raises
         # ``Layout <style> not found`` when the style is referenced.
-        style.configure("Date.Treeview", rowheight=28, padding=(0, 4))
+        style.configure(
+            "Date.Treeview",
+            rowheight=28,
+            padding=(0, 4),
+            background="#1e1e1e",
+            fieldbackground="#1e1e1e",
+            foreground="#f0f0f0",
+        )
+        style.map(
+            "Date.Treeview",
+            background=[("selected", "#3a3d41")],
+            foreground=[("selected", "#ffffff")],
+        )
 
         columns = (
             "company",
@@ -317,13 +329,13 @@ class OrderScraperApp:
         self.date_tree.configure(yscrollcommand=scroll.set)
         scroll.pack(side="right", fill="y")
 
-        self.date_tree.tag_configure("even", background="#f9f9f9")
-        self.date_tree.tag_configure("odd", background="#ececec")
+        self.date_tree.tag_configure("even", background="#2b2b2b")
+        self.date_tree.tag_configure("odd", background="#232323")
         self.date_tree.tag_configure(
-            "total", background="#e0e0e0", font=("Arial", 10, "bold")
+            "total", background="#3a3a3a", font=("Arial", 10, "bold")
         )
-        self.date_tree.tag_configure("inprogress", background="#fff0e6")
-        self.date_tree.tag_configure("focus", background="#d0e0ff")
+        self.date_tree.tag_configure("inprogress", background="#3b2d1f")
+        self.date_tree.tag_configure("focus", background="#1f3d5a")
         self.hovered_item: Optional[str] = None
         self.date_tree.bind("<Double-1>", self.toggle_order_row)
         self.date_tree.bind("<Motion>", self.on_tree_hover)
