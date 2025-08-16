@@ -87,7 +87,43 @@ class OrderScraperApp:
         self.export_job = None
         self.last_export_dir = export_path
 
-        # date range report configuration
+        self._setup_state()
+
+        # Tabs
+        self.tab_control = ctk.CTkTabview(root)
+        # date range report tab
+        self.date_range_tab = self.tab_control.add("Date Range Report")
+        # settings tab on far right
+        self.settings_tab = self.tab_control.add("Settings")
+        self.tab_control.pack(expand=1, fill="both")
+
+        self._build_settings_tab()
+
+        self._build_date_range_tab()
+
+        self.refresh_seconds_var = ctk.StringVar(value="")
+        self.refresh_label = ctk.CTkLabel(
+            root, textvariable=self.refresh_seconds_var
+        )
+        self.refresh_label.place(relx=1.0, rely=1.0, anchor="se", x=-10, y=-10)
+
+        self.scrape_interval = 60
+        self.scrape_job: Optional[str] = None
+        self.countdown_job: Optional[str] = None
+        self.next_scrape_time: Optional[datetime] = None
+        self.schedule_order_scrape()
+
+        self.schedule_daily_export()
+
+        # Ensure the window is sized to show all content
+        try:
+            self.root.update_idletasks()
+            self.root.minsize(self.root.winfo_width(), self.root.winfo_height())
+        except Exception:
+            pass
+
+    def _setup_state(self) -> None:
+        """Initialize variables for the date range report."""
         self.range_start_var = ctk.StringVar()
         self.range_end_var = ctk.StringVar()
         self.range_total_jobs_var = ctk.StringVar(value="0")
@@ -98,56 +134,103 @@ class OrderScraperApp:
         self.filtered_raw_date_range_rows: list[dict[str, Any]] = []
         self.date_range_filter_var = ctk.StringVar()
 
-        # Tabs
-        self.tab_control = ctk.CTkTabview(root)
-        # date range report tab
-        self.date_range_tab = self.tab_control.add("Date Range Report")
-        # settings tab on far right
-        self.settings_tab = self.tab_control.add("Settings")
-        self.tab_control.pack(expand=1, fill="both")
+    def _build_settings_tab(self) -> None:
+        ctk.CTkLabel(self.settings_tab, text="Database File:").grid(
+            row=0, column=0, padx=5, pady=5
+        )
+        ctk.CTkEntry(self.settings_tab, textvariable=self.db_path_var).grid(
+            row=0, column=1, padx=5, pady=5
+        )
+        ctk.CTkButton(
+            self.settings_tab, text="Browse", command=self.browse_db
+        ).grid(row=0, column=2, padx=5, pady=5)
 
-        # Settings Tab
-        ctk.CTkLabel(self.settings_tab, text="Database File:").grid(row=0, column=0, padx=5, pady=5)
-        ctk.CTkEntry(self.settings_tab, textvariable=self.db_path_var).grid(row=0, column=1, padx=5, pady=5)
-        ctk.CTkButton(self.settings_tab, text="Browse", command=self.browse_db).grid(row=0, column=2, padx=5, pady=5)
+        ctk.CTkLabel(self.settings_tab, text="Business Start (HH:MM):").grid(
+            row=1, column=0, padx=5, pady=5
+        )
+        self.business_start_var = ctk.StringVar(
+            value=time_utils.BUSINESS_START.strftime("%H:%M")
+        )
+        ctk.CTkEntry(
+            self.settings_tab, textvariable=self.business_start_var, width=80
+        ).grid(row=1, column=1, padx=5, pady=5)
+        ctk.CTkLabel(self.settings_tab, text="Business End (HH:MM):").grid(
+            row=2, column=0, padx=5, pady=5
+        )
+        self.business_end_var = ctk.StringVar(
+            value=time_utils.BUSINESS_END.strftime("%H:%M")
+        )
+        ctk.CTkEntry(
+            self.settings_tab, textvariable=self.business_end_var, width=80
+        ).grid(row=2, column=1, padx=5, pady=5)
+        ctk.CTkButton(
+            self.settings_tab,
+            text="Set Hours",
+            command=self.update_business_hours,
+        ).grid(row=3, column=0, columnspan=2, pady=10)
 
-        ctk.CTkLabel(self.settings_tab, text="Business Start (HH:MM):").grid(row=1, column=0, padx=5, pady=5)
-        self.business_start_var = ctk.StringVar(value=time_utils.BUSINESS_START.strftime("%H:%M"))
-        ctk.CTkEntry(self.settings_tab, textvariable=self.business_start_var, width=80).grid(row=1, column=1, padx=5, pady=5)
-        ctk.CTkLabel(self.settings_tab, text="Business End (HH:MM):").grid(row=2, column=0, padx=5, pady=5)
-        self.business_end_var = ctk.StringVar(value=time_utils.BUSINESS_END.strftime("%H:%M"))
-        ctk.CTkEntry(self.settings_tab, textvariable=self.business_end_var, width=80).grid(row=2, column=1, padx=5, pady=5)
-        ctk.CTkButton(self.settings_tab, text="Set Hours", command=self.update_business_hours).grid(row=3, column=0, columnspan=2, pady=10)
+        ctk.CTkLabel(self.settings_tab, text="Export Path:").grid(
+            row=4, column=0, padx=5, pady=5
+        )
+        ctk.CTkEntry(self.settings_tab, textvariable=self.export_path_var).grid(
+            row=4, column=1, padx=5, pady=5
+        )
+        ctk.CTkButton(
+            self.settings_tab, text="Browse", command=self.browse_export_path
+        ).grid(row=4, column=2, padx=5, pady=5)
 
-        ctk.CTkLabel(self.settings_tab, text="Export Path:").grid(row=4, column=0, padx=5, pady=5)
-        ctk.CTkEntry(self.settings_tab, textvariable=self.export_path_var).grid(row=4, column=1, padx=5, pady=5)
-        ctk.CTkButton(self.settings_tab, text="Browse", command=self.browse_export_path).grid(row=4, column=2, padx=5, pady=5)
+        ctk.CTkLabel(self.settings_tab, text="Export Time (HH:MM):").grid(
+            row=5, column=0, padx=5, pady=5
+        )
+        ctk.CTkEntry(
+            self.settings_tab, textvariable=self.export_time_var, width=80
+        ).grid(row=5, column=1, padx=5, pady=5)
+        ctk.CTkButton(
+            self.settings_tab,
+            text="Set Export",
+            command=self.update_export_settings,
+        ).grid(row=6, column=0, columnspan=2, pady=10)
 
-        ctk.CTkLabel(self.settings_tab, text="Export Time (HH:MM):").grid(row=5, column=0, padx=5, pady=5)
-        ctk.CTkEntry(self.settings_tab, textvariable=self.export_time_var, width=80).grid(row=5, column=1, padx=5, pady=5)
-        ctk.CTkButton(self.settings_tab, text="Set Export", command=self.update_export_settings).grid(row=6, column=0, columnspan=2, pady=10)
-
+    def _build_date_range_tab(self) -> None:
         # Date Range Report tab view
         control_frame = ctk.CTkFrame(self.date_range_tab)
         control_frame.grid(row=0, column=0, columnspan=7, sticky="ew", padx=10, pady=5)
-        ctk.CTkLabel(control_frame, text="Start Date:").grid(row=0, column=0, padx=5, pady=5)
-        DateEntry(control_frame, textvariable=self.range_start_var, width=12, date_pattern="yyyy-mm-dd").grid(
-            row=0, column=1, padx=5, pady=5
+        ctk.CTkLabel(control_frame, text="Start Date:").grid(
+            row=0, column=0, padx=5, pady=5
         )
-        ctk.CTkLabel(control_frame, text="End Date:").grid(row=0, column=2, padx=5, pady=5)
-        DateEntry(control_frame, textvariable=self.range_end_var, width=12, date_pattern="yyyy-mm-dd").grid(
-            row=0, column=3, padx=5, pady=5
+        DateEntry(
+            control_frame,
+            textvariable=self.range_start_var,
+            width=12,
+            date_pattern="yyyy-mm-dd",
+        ).grid(row=0, column=1, padx=5, pady=5)
+        ctk.CTkLabel(control_frame, text="End Date:").grid(
+            row=0, column=2, padx=5, pady=5
         )
-        ctk.CTkButton(control_frame, text="Generate Report", command=self.run_date_range_report).grid(
-            row=0, column=4, padx=5, pady=5
+        DateEntry(
+            control_frame,
+            textvariable=self.range_end_var,
+            width=12,
+            date_pattern="yyyy-mm-dd",
+        ).grid(row=0, column=3, padx=5, pady=5)
+        ctk.CTkButton(
+            control_frame,
+            text="Generate Report",
+            command=self.run_date_range_report,
+        ).grid(row=0, column=4, padx=5, pady=5)
+        ctk.CTkButton(
+            control_frame,
+            text="Clear",
+            command=self.clear_date_range_report,
+        ).grid(row=0, column=5, padx=5, pady=5)
+        ctk.CTkButton(
+            control_frame,
+            text="Export CSV",
+            command=self.export_date_range_csv,
+        ).grid(row=0, column=6, padx=5, pady=5)
+        ctk.CTkLabel(control_frame, text="Search:").grid(
+            row=1, column=0, padx=5, pady=5
         )
-        ctk.CTkButton(control_frame, text="Clear", command=self.clear_date_range_report).grid(
-            row=0, column=5, padx=5, pady=5
-        )
-        ctk.CTkButton(control_frame, text="Export CSV", command=self.export_date_range_csv).grid(
-            row=0, column=6, padx=5, pady=5
-        )
-        ctk.CTkLabel(control_frame, text="Search:").grid(row=1, column=0, padx=5, pady=5)
         self.date_range_filter_entry = ctk.CTkEntry(
             control_frame, textvariable=self.date_range_filter_var
         )
@@ -155,9 +238,11 @@ class OrderScraperApp:
         self.date_range_filter_entry.bind(
             "<Return>", lambda e: self.filter_date_range_rows()
         )
-        ctk.CTkButton(control_frame, text="Filter", command=self.filter_date_range_rows).grid(
-            row=1, column=2, padx=5, pady=5
-        )
+        ctk.CTkButton(
+            control_frame,
+            text="Filter",
+            command=self.filter_date_range_rows,
+        ).grid(row=1, column=2, padx=5, pady=5)
         self.date_rows_expanded = False
         self.expand_collapse_btn = ctk.CTkButton(
             control_frame, text="Expand All", command=self.toggle_date_rows
@@ -242,31 +327,18 @@ class OrderScraperApp:
 
         summary = ctk.CTkFrame(self.date_range_tab)
         summary.grid(row=3, column=0, columnspan=7, sticky="ew", padx=10, pady=5)
-        ctk.CTkLabel(summary, text="Total Jobs:").grid(row=0, column=0, padx=5, pady=5)
-        ctk.CTkLabel(summary, textvariable=self.range_total_jobs_var).grid(row=0, column=1, padx=5, pady=5)
-        ctk.CTkLabel(summary, text="Total Hours:").grid(row=0, column=2, padx=5, pady=5)
-        ctk.CTkLabel(summary, textvariable=self.range_total_hours_var).grid(row=0, column=3, padx=5, pady=5)
-
-        self.refresh_seconds_var = ctk.StringVar(value="")
-        self.refresh_label = ctk.CTkLabel(
-            root, textvariable=self.refresh_seconds_var
+        ctk.CTkLabel(summary, text="Total Jobs:").grid(
+            row=0, column=0, padx=5, pady=5
         )
-        self.refresh_label.place(relx=1.0, rely=1.0, anchor="se", x=-10, y=-10)
-
-        self.scrape_interval = 60
-        self.scrape_job: Optional[str] = None
-        self.countdown_job: Optional[str] = None
-        self.next_scrape_time: Optional[datetime] = None
-        self.schedule_order_scrape()
-
-        self.schedule_daily_export()
-
-        # Ensure the window is sized to show all content
-        try:
-            self.root.update_idletasks()
-            self.root.minsize(self.root.winfo_width(), self.root.winfo_height())
-        except Exception:
-            pass
+        ctk.CTkLabel(summary, textvariable=self.range_total_jobs_var).grid(
+            row=0, column=1, padx=5, pady=5
+        )
+        ctk.CTkLabel(summary, text="Total Hours:").grid(
+            row=0, column=2, padx=5, pady=5
+        )
+        ctk.CTkLabel(summary, textvariable=self.range_total_hours_var).grid(
+            row=0, column=3, padx=5, pady=5
+        )
 
     def schedule_order_scrape(self, interval: Optional[int] = None) -> None:
         if interval is not None:
